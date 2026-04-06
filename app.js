@@ -1,13 +1,51 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbx94_rAz6wIFA_ClGvdxCgwndME8nsLa0pOJQzt1l3MhEWHklffHB1OAyeOah_hduGfVw/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxNEkhPV65x6JJt6QFHIJQysuTYN8egIia-lhvGT2ZyRoRosF6V-ZMesqkH9jepv6kd/exec";
+
+
+let startY = 0;
+
+document.addEventListener("touchstart", e => {
+  startY = e.touches[0].clientY;
+});
+
+document.addEventListener("touchend", e => {
+  const endY = e.changedTouches[0].clientY;
+
+  if (endY - startY > 100) {
+    location.reload();
+  }
+});
 
 function haptic() {
   if (navigator.vibrate) navigator.vibrate(10);
 }
 
 function showPage(id) {
-  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
-  document.getElementById(id).classList.add("active");
+  document.querySelectorAll(".page").forEach(p => {
+    p.classList.remove("active");
+    p.style.display = "none"; // 🔥 FIX stacking
+  });
+
+  const page = document.getElementById(id);
+  page.style.display = "block";
+  page.classList.add("active");
 }
+
+function showPage(id) {
+  document.querySelectorAll(".page").forEach(p => {
+    p.classList.remove("active");
+    p.style.display = "none";
+  });
+
+  const page = document.getElementById(id);
+  page.style.display = "block";
+  page.classList.add("active");
+
+  // 🔥 ADD THIS PART
+  if (id === "rankings") {
+    loadRankings();
+  }
+}
+
 
 async function callAPI(data) {
   const res = await fetch(API_URL, {
@@ -28,25 +66,21 @@ async function loadSets() {
     const div = document.createElement("div");
     div.className = "match-card";
 
-    const hasScore = match.score && match.score !== "";
+    const score = match.score || "";
+    const isComplete = score.includes("-");
 
-    let scoreHTML = "";
+    let scoreUI = "";
 
-    if (hasScore) {
-      const [a, b] = match.score.split("-").map(Number);
-
-      const isWin = match.teamA.includes("Max"); // TEMP "(I)" logic
-
-      scoreHTML = `
-        <div class="score">${match.score}</div>
-        <div class="${isWin ? "win" : "loss"}">${isWin ? "WIN" : "LOSS"}</div>
+    if (!isComplete) {
+      scoreUI = `
+        <div class="score-input">
+          <input type="number" placeholder="0" onchange="saveScore(${match.set}, this, 'A')">
+          <span>-</span>
+          <input type="number" placeholder="0" onchange="saveScore(${match.set}, this, 'B')">
+        </div>
       `;
     } else {
-      scoreHTML = `
-        <button class="enter-score" onclick="quickScore(${match.set},1)">
-          Enter Score
-        </button>
-      `;
+      scoreUI = `<div class="score" onclick="editScore(${match.set}, '${score}')">${score}</div>`;
     }
 
     div.innerHTML = `
@@ -55,7 +89,8 @@ async function loadSets() {
         <div class="teamB">${match.teamB}</div>
       </div>
       <div class="match-right">
-        ${scoreHTML}
+        ${scoreUI}
+        <div id="status-${match.set}"></div>
       </div>
     `;
 
@@ -76,6 +111,44 @@ async function quickScore(set, game) {
 
   loadSets();
 }
+
+
+function editScore(set, current) {
+  const newScore = prompt("Edit score", current);
+  if (!newScore) return;
+
+  callAPI({
+    action: "score",
+    set,
+    game: 1,
+    score: newScore
+  });
+
+  loadSets();
+}
+
+
+
+async function saveScore(set, input, team) {
+  const parent = input.parentElement;
+  const inputs = parent.querySelectorAll("input");
+
+  if (inputs[0].value && inputs[1].value) {
+    const score = `${inputs[0].value}-${inputs[1].value}`;
+
+    await callAPI({
+      action: "score",
+      set,
+      game: 1,
+      score
+    });
+
+    showSuccess(`status-${set}`);
+    loadSets();
+  }
+}
+
+
 
 // ACTIONS
 async function generateGames() {
@@ -100,6 +173,35 @@ async function setScore(set, game) {
     game,
     score
   });
+}
+
+
+
+async function loadSchedule() {
+  const data = await callAPI({ action: "week" });
+
+  const container = document.getElementById("scheduleList");
+
+  container.innerHTML = data.map(p => `
+    <div class="card">
+      ${p.name}
+      <button onclick="markSent(this)">Text</button>
+    </div>
+  `).join("");
+}
+
+function markSent(btn) {
+  btn.innerText = "✓";
+  btn.style.background = "#00c853";
+}
+
+
+
+function showSuccess(id) {
+  const el = document.getElementById(id);
+  el.innerHTML = `<div class="success">✔ Saved</div>`;
+
+  setTimeout(() => el.innerHTML = "", 1500);
 }
 
 // REAL-TIME UPDATE LOOP
@@ -132,20 +234,36 @@ function renderChart(data) {
   });
 }
 
-let startX = 0;
 
-document.addEventListener("touchstart", e => {
-  startX = e.touches[0].clientX;
-});
+let chart;
 
-document.addEventListener("touchend", e => {
-  const endX = e.changedTouches[0].clientX;
-  const diff = startX - endX;
+async function loadRankings() {
+  const data = await callAPI({ action: "getUserTrend" });
 
-  if (Math.abs(diff) > 50) {
-    swipe(diff > 0 ? "left" : "right");
-  }
-});
+  const ctx = document.getElementById("chart");
+
+  if (chart) chart.destroy();
+
+  chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: data.map((_, i) => i),
+      datasets: [{
+        data: data.map(p => p.winPct),
+        borderWidth: 3,
+        tension: 0.4
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { display: false },
+        y: { display: false }
+      }
+    }
+  });
+}
+
 
 const pages = ["home","rankings","schedule","sets","input"];
 let currentPage = 0;
@@ -166,6 +284,11 @@ function swipe(direction) {
 function toggleMenu() {
   document.getElementById("sideMenu").classList.toggle("open");
   document.getElementById("overlay").classList.toggle("show");
+}
+
+function navigate(page) {
+  showPage(page);
+  toggleMenu(); // closes it
 }
 
 window.onload = () => {
