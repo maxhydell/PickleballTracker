@@ -17,6 +17,45 @@ async function callAPI(data) {
   return await res.json();
 }
 
+
+async function loadSets() {
+  const data = await callAPI({ action: "getTodaySets" });
+
+  const container = document.getElementById("setsContainer");
+  container.innerHTML = "";
+
+  data.forEach((set, i) => {
+    const div = document.createElement("div");
+    div.className = "card";
+
+    div.innerHTML = `
+      <h3>Set ${set.set}</h3>
+      <p>${set.teamA} vs ${set.teamB}</p>
+      <div class="grid">
+        <button onclick="quickScore(${set.set},1)">Game 1</button>
+        <button onclick="quickScore(${set.set},2)">Game 2</button>
+        <button onclick="quickScore(${set.set},3)">Game 3</button>
+      </div>
+    `;
+
+    container.appendChild(div);
+  });
+}
+
+async function quickScore(set, game) {
+  const score = prompt("Enter score");
+  if (!score) return;
+
+  await callAPI({
+    action: "score",
+    set,
+    game,
+    score
+  });
+
+  loadSets();
+}
+
 // ACTIONS
 async function generateGames() {
   haptic();
@@ -98,4 +137,8 @@ function swipe(direction) {
     currentPage--;
   }
   showPage(pages[currentPage]);
+}
+
+function toggleMenu() {
+  document.getElementById("sideMenu").classList.toggle("open");
 }

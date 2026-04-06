@@ -13,15 +13,34 @@
 
 <!-- LOADING SCREEN -->
 <div id="loading-screen">
-  <div class="logo">Pickleball Tracker</div>
+  <div class="loading-text">
+    <span class="word1">PICKLEBALL</span>
+    <span class="word2">TRACKER</span>
+    <div class="ball"></div>
+  </div>
 </div>
 
 <!-- APP -->
 <div class="app">
 
+  <div class="top-bar">
+    <div class="menu-btn" onclick="toggleMenu()">☰</div>
+    <div class="title">Pickleball Tracker</div>
+  </div>
+
+  <div id="sideMenu" class="side-menu">
+    <button onclick="showPage('home')">Home</button>
+    <button onclick="showPage('rankings')">Rankings</button>
+    <button onclick="showPage('schedule')">Schedule</button>
+    <button onclick="showPage('sets')">Sets</button>
+  </div>
+
   <!-- PAGES -->
 
   <div id="home" class="page active">
+    <h1>Today's Matches</h1>
+    <div id="setsContainer"></div>
+  </div>
     <h1>Dashboard</h1>
 
     <div class="card">
