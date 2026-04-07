@@ -4,18 +4,28 @@ function log(label, data) {
   console.log("🔥", label, data);
 }
 
-let startY = 0;
+let touchStartY = 0;
+let holdTimer;
 
 document.addEventListener("touchstart", e => {
-  startY = e.touches[0].clientY;
+  touchStartY = e.touches[0].clientY;
 });
 
-document.addEventListener("touchend", e => {
-  const endY = e.changedTouches[0].clientY;
+document.addEventListener("touchmove", e => {
+  const y = e.touches[0].clientY;
 
-  if (endY - startY > 100) {
-    location.reload();
+  if (y - touchStartY > 80) {
+    if (!holdTimer) {
+      holdTimer = setTimeout(() => {
+        location.reload();
+      }, 2000);
+    }
   }
+});
+
+document.addEventListener("touchend", () => {
+  clearTimeout(holdTimer);
+  holdTimer = null;
 });
 
 function haptic() {
@@ -41,6 +51,12 @@ function showPage(id) {
 }
 
 
+function formatNames(str) {
+  return str
+    .toUpperCase()
+    .replace(/\//g, " / ");
+}
+
 async function callAPI(params) {
   const query = new URLSearchParams(params).toString();
 
@@ -59,7 +75,10 @@ async function loadSets() {
   data.forEach(match => {
     const games = ["G1", "G2", "G3"];
 
-    container.innerHTML += `<div class="set-block">`;
+    container.innerHTML += `
+      <div class="set-container">
+        <div class="set-title">SET ${match.set}</div>
+    `;
 
     games.forEach((g, i) => {
       const score = match.scores?.[i] || "";
@@ -67,22 +86,25 @@ async function loadSets() {
 
       let rightSide = "";
 
-      if (!complete) {
-        rightSide = `
-          <div class="score-input-modern">
-            <input type="number" oninput="updateScore(${match.set}, ${i}, this)">
-            <span>-</span>
-            <input type="number" oninput="updateScore(${match.set}, ${i}, this)">
-          </div>
-        `;
+      const [a = 0, b = 0] = score ? score.split("-") : [0, 0];
+
+      rightSide = `
+        <div class="score-editable">
+          <input value="${a}" oninput="updateScore(${match.set}, ${i}, this)">
+          <span>-</span>
+          <input value="${b}" oninput="updateScore(${match.set}, ${i}, this)">
+        </div>
+      `;
       } else {
         const [a, b] = score.split("-").map(Number);
-        const isWin = a > b;
+        let result = "tie";
+        if (a > b) result = "win";
+        if (b > a) result = "loss";
 
         rightSide = `
           <div class="score-display">${score}</div>
-          <div class="${isWin ? "win" : "loss"}">
-            ${isWin ? "WIN" : "LOSS"}
+          <div class="${result}">
+            ${result.toUpperCase()}
           </div>
         `;
       }
@@ -91,8 +113,8 @@ async function loadSets() {
         <div class="match-card">
           <div class="left">
             <div class="game-label">${g}</div>
-            <div class="teamA">${match.teamA}</div>
-            <div class="teamB">${match.teamB}</div>
+            <div class="teamA">${formatNames(match.teamA)}</div>
+            <div class="teamB">${formatNames(match.teamB)}</div>
           </div>
 
           <div class="right">
@@ -333,11 +355,17 @@ function toggleMenu() {
   document.getElementById("overlay").classList.toggle("show");
 }
 
-function updateScore(set, gameIndex, input) {
-  const row = input.parentElement;
-  const inputs = row.querySelectorAll("input");
+let scoreTimeout;
 
-  if (inputs[0].value && inputs[1].value) {
+function updateScore(set, gameIndex, input) {
+  clearTimeout(scoreTimeout);
+
+  const parent = input.parentElement;
+  const inputs = parent.querySelectorAll("input");
+
+  if (inputs.length < 2) return;
+
+  scoreTimeout = setTimeout(() => {
     const score = `${inputs[0].value}-${inputs[1].value}`;
 
     callAPI({
@@ -348,7 +376,7 @@ function updateScore(set, gameIndex, input) {
     });
 
     showSuccess(`status-${set}-${gameIndex}`);
-  }
+  }, 500);
 }
 
 

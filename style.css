@@ -233,8 +233,12 @@ button:active {
 }
 
 .game-label {
-  font-size: 18px;
-  margin-bottom: 5px;
+  font-size: 11px;
+  opacity: 0.5;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-weight: 600;
 }
 
 .teams {
@@ -256,6 +260,19 @@ button:active {
   border: none;
   font-size: 20px;
   text-align: center;
+}
+
+.set-container {
+  background: rgba(20,20,20,0.85);
+  border-radius: 20px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.set-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 10px;
 }
 
 
@@ -301,12 +318,43 @@ button:active {
 }
 
 
+.tie {
+  background: #888;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.score-editable {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.score-editable input {
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid #444;
+  color: white;
+  font-size: 18px;
+  text-align: center;
+}
+
+.score-editable input:focus {
+  outline: none;
+  border-bottom: 2px solid #00c853;
+}
+
+
 .match-card {
   background: rgba(20,20,20,0.9);
   border-radius: 16px;
   padding: 15px;
   margin-bottom: 12px;
   display: flex;
+  position: relative;
   justify-content: space-between;
   align-items: center;
 }
