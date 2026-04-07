@@ -82,11 +82,15 @@ async function loadSets() {
 
     games.forEach((g, i) => {
       const score = match.scores?.[i] || "";
-      const complete = score.includes("-");
+
 
       let rightSide = "";
 
       const [a = 0, b = 0] = score ? score.split("-") : [0, 0];
+
+      let result = "tie";
+      if (a > b) result = "win";
+      if (b > a) result = "loss";
 
       rightSide = `
         <div class="score-editable">
@@ -94,21 +98,12 @@ async function loadSets() {
           <span>-</span>
           <input value="${b}" oninput="updateScore(${match.set}, ${i}, this)">
         </div>
+     
+        <div class="${result}">
+          ${result.toUpperCase()}
+        </div>
       `;
-
-
-        const [a, b] = score.split("-").map(Number);
-        let result = "tie";
-        if (a > b) result = "win";
-        if (b > a) result = "loss";
-
-        rightSide = `
-          <div class="score-display">${score}</div>
-          <div class="${result}">
-            ${result.toUpperCase()}
-          </div>
-        `;
-      }
+    }
 
       container.innerHTML += `
         <div class="match-card">
@@ -167,7 +162,7 @@ async function completeDay() {
 
 
 async function loadSchedule() {
-  const data = await callAPI({ action: "week" });
+  const data = await callAPI({ action: "getSchedule" });
 
   const container = document.getElementById("scheduleList");
 
@@ -258,18 +253,9 @@ async function loadRankings() {
 }
 
 
-const pages = ["home","rankings","schedule","sets","input"];
+const pages = ["rankings","schedule","sets","input"];
 let currentPage = 0;
 
-function swipe(direction) {
-  if (direction === "left" && currentPage < pages.length - 1) {
-    currentPage++;
-  }
-  if (direction === "right" && currentPage > 0) {
-    currentPage--;
-  }
-  showPage(pages[currentPage]);
-}
 
 
 
@@ -318,9 +304,6 @@ function updateScore(set, gameIndex, input) {
 
 function navigate(page) {
   showPage(page);
-  document.getElementById("sideMenu").classList.remove("open");
-  document.getElementById("overlay").classList.remove("show");
-  toggleMenu(); // closes it
 }
 
 window.onload = () => {
