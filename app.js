@@ -95,7 +95,8 @@ async function loadSets() {
           <input value="${b}" oninput="updateScore(${match.set}, ${i}, this)">
         </div>
       `;
-      } else {
+
+
         const [a, b] = score.split("-").map(Number);
         let result = "tie";
         if (a > b) result = "win";
@@ -129,38 +130,10 @@ async function loadSets() {
   });
 }
 
-function handleScoreInput(set, input) {
-  const parent = input.parentElement;
-  const inputs = parent.querySelectorAll("input");
-
-  if (inputs[0].value && inputs[1].value) {
-    const score = `${inputs[0].value}-${inputs[1].value}`;
-
-    callAPI({
-      action: "submitScore",
-      set,
-      score
-    });
-
-    showSuccess(`status-${set}`);
-    loadSets();
-  }
-}
 
 
-async function quickScore(set, game) {
-  const score = prompt("Enter score");
-  if (!score) return;
 
-  await callAPI({
-    action: "score",
-    set,
-    game,
-    score
-  });
 
-  loadSets();
-}
 
 
 function editScore(set, current) {
@@ -178,26 +151,6 @@ function editScore(set, current) {
 
 
 
-async function saveScore(set, input, team) {
-  const parent = input.parentElement;
-  const inputs = parent.querySelectorAll("input");
-
-  if (inputs[0].value && inputs[1].value) {
-    const score = `${inputs[0].value}-${inputs[1].value}`;
-
-    await callAPI({
-      action: "score",
-      set,
-      game: 1,
-      score
-    });
-
-    showSuccess(`status-${set}`);
-    loadSets();
-  }
-}
-
-
 
 // ACTIONS
 async function generateGames() {
@@ -210,19 +163,6 @@ async function completeDay() {
   await callAPI({ action: "done" });
 }
 
-async function setScore(set, game) {
-  haptic();
-
-  const score = prompt("Enter score (ex: 11-7)");
-  if (!score) return;
-
-  await callAPI({
-    action: "score",
-    set,
-    game,
-    score
-  });
-}
 
 
 
@@ -253,11 +193,7 @@ function showSuccess(id) {
   setTimeout(() => el.innerHTML = "", 1500);
 }
 
-// REAL-TIME UPDATE LOOP
-setInterval(async () => {
-  const data = await callAPI({ action: "getRankings" });
-  renderChart(data);
-}, 1500);
+
 
 async function loadData() {
   // rankings
