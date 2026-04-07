@@ -69,23 +69,18 @@ async function loadSets() {
   log("SETS DATA", data);
 
   const container = document.getElementById("setsContainer");
-
   container.innerHTML = `<h2 class="section-title">Pool Play Matches</h2>`;
 
   data.forEach(match => {
+    // Creating the container for the specific Set
+    const setWrapper = document.createElement("div");
+    setWrapper.className = "set-container";
+    setWrapper.innerHTML = `<div class="set-title">SET ${match.set}</div>`;
+
     const games = ["G1", "G2", "G3"];
 
-    container.innerHTML += `
-      <div class="set-container">
-        <div class="set-title">SET ${match.set}</div>
-    `;
-
     games.forEach((g, i) => {
-      const score = match.scores?.[i] || "";
-
-
-      
-
+      const score = match.scores?.[i] || "0-0";
       let a = 0, b = 0;
 
       if (score && score.includes("-")) {
@@ -96,40 +91,38 @@ async function loadSets() {
 
       let result = "tie";
       if (Number(a) > Number(b)) result = "win";
-      if (Number(b) > Number(a)) result = "loss";
+      else if (Number(b) > Number(a)) result = "loss";
 
-      const rightSide = `
-        <div class="score-editable">
-          <input type="number" value="${a}" oninput="updateScore(${match.set}, ${i}, this)">
-          <span>-</span>
-          <input type="number" value="${b}" oninput="updateScore(${match.set}, ${i}, this)">
-        </div>
-     
-        <div class="${result}">
-          ${result.toUpperCase()}
-        </div>
-      `;
-
-      container.innerHTML += `
+      // Match Card structured like the screenshot
+      const matchCard = `
         <div class="match-card">
-          <div class="left">
-            <div class="game-label">${g}</div>
-            <div class="teamA">${formatNames(match.teamA)}</div>
-            <div class="teamB">${formatNames(match.teamB)}</div>
+          <div class="left-content">
+            <div class="team-row">
+              <span class="team-names">${formatNames(match.teamA)}</span>
+              <span class="status-badge ${result}">${result}</span>
+            </div>
+            <div class="opponents">
+              ${formatNames(match.teamB)}
+            </div>
           </div>
 
-          <div class="right">
-            ${rightSide}
+          <div class="right-content">
+            <div class="score-editable">
+              <input type="number" value="${a}" oninput="updateScore(${match.set}, ${i}, this)">
+              <span class="score-separator">-</span>
+              <input type="number" value="${b}" oninput="updateScore(${match.set}, ${i}, this)">
+            </div>
+            <div class="meta-info">${g} • Group 2</div>
             <div id="status-${match.set}-${i}"></div>
           </div>
         </div>
       `;
+      setWrapper.innerHTML += matchCard;
     });
 
-    container.innerHTML += `</div>`;
+    container.appendChild(setWrapper);
   });
 }
-
 
 
 

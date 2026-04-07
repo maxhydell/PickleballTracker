@@ -1,3 +1,7 @@
+/* =========================
+   BASE
+========================= */
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
@@ -5,13 +9,190 @@ body {
   color: white;
 }
 
+/* =========================
+   TEXT / HEADERS
+========================= */
 
+
+/* =========================
+   APP CONTAINER
+========================= */
+
+.app {
+  max-width: 430px;
+  margin: auto;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+/* =========================
+   PAGE SYSTEM (ADDED)
+========================= */
+
+.page {
+  display: none;
+}
+
+.page.active {
+  display: block;
+}
+
+/* =========================
+   MATCH / SET UI
+========================= */
+
+.set-container {
+  margin-bottom: 30px;
+}
 
 .section-title {
-  font-size: 22px;
+  color: #e5e7eb;
+  font-size: 1.25rem;
   font-weight: 700;
+  margin-bottom: 1rem;
+  padding-left: 5px;
+}
+
+.set-title {
+  color: #9ca3af;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  padding-left: 5px;
+}
+
+.match-card {
+  background: #1a1614; /* Dark brownish-black from screenshot */
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.2s;
+}
+
+.match-card:hover {
+  background: #241f1c;
+}
+
+.left-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.team-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.team-names {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.opponents {
+  color: #9ca3af;
+  font-size: 0.85rem;
+}
+
+/* Status Badges */
+.status-badge {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.win { background: #059669; color: #ecfdf5; }
+.loss { background: #dc2626; color: #fef2f2; }
+.tie { background: #4b5563; color: #f3f4f6; }
+
+/* Right side scores */
+.right-content {
+  text-align: right;
+  min-width: 80px;
+}
+
+.score-editable {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+
+.score-editable input {
+  width: 32px;
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-size: 1.25rem;
+  font-weight: 800;
+  text-align: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.score-editable input:focus {
+  outline: none;
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
+}
+
+.score-separator {
+  color: #ffffff;
+  font-size: 1.25rem;
+  font-weight: 800;
+  padding: 0 2px;
+}
+
+.meta-info {
+  font-size: 10px;
+  color: #6b7280;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+/* =========================
+   TEAMS TEXT
+========================= */
+
+.teams {
+  font-size: 20px;
+  font-weight: 600;
   margin-bottom: 10px;
 }
+
+/* =========================
+   SCORE INPUT
+========================= */
+
+
+
+.score-input {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.score-input input {
+  width: 50px;
+  height: 50px;
+  background: #ddd;
+  border: none;
+  font-size: 20px;
+  text-align: center;
+}
+
+/* =========================
+   OLD SCORE SYSTEM (KEPT)
+========================= */
 
 .match-row {
   display: flex;
@@ -21,18 +202,6 @@ body {
   border-radius: 16px;
   padding: 16px;
   margin-bottom: 10px;
-}
-
-.teams {
-  font-size: 15px;
-}
-
-.teamA {
-  font-weight: 600;
-}
-
-.teamB {
-  opacity: 0.6;
 }
 
 .score-area {
@@ -61,91 +230,29 @@ body {
   color: white;
 }
 
+/* =========================
+   RESULT BADGES
+========================= */
 
-.win {
+
+/* =========================
+   SUCCESS / FEEDBACK
+========================= */
+
+.success {
   background: #00c853;
   color: white;
-  font-size: 12px;
   padding: 4px 10px;
   border-radius: 6px;
-  margin-top: 5px;
-  animation: fadeIn 0.4s ease;
-}
-
-.loss {
-  background: #ff5252;
-  color: white;
   font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  margin-top: 5px;
-  animation: fadeIn 0.4s ease;
+  margin-top: 6px;
+  animation: fadeIn 0.3s ease;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+/* =========================
+   CARDS / BUTTONS
+========================= */
 
-.app {
-  max-width: 430px;
-  margin: auto;
-  height: 100vh;
-  position: relative;
-  overflow: hidden;
-}
-
-/* LOADING */
-#loading-screen {
-  position: fixed;
-  inset: 0;
-  background: black;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 999;
-  animation: fadeOut 1s ease forwards;
-  animation-delay: 1.2s;
-}
-
-.logo {
-  color: white;
-  font-size: 28px;
-  font-weight: 600;
-}
-
-
-.rank-card {
-  background: rgba(20,20,20,0.9);
-  padding: 20px;
-  border-radius: 20px;
-}
-
-.rank-header {
-  display: flex;
-  justify-content: space-between;
-}
-
-.rank-score {
-  text-align: right;
-}
-
-#bigStat {
-  font-size: 40px;
-  font-weight: 700;
-  color: #00c853;
-}
-
-/* PAGES */
-.page {
-  display: none;
-}
-
-.page.active {
-  display: block;
-}
-
-/* CARDS */
 .card {
   background: rgba(255,255,255,0.7);
   backdrop-filter: blur(20px);
@@ -154,7 +261,6 @@ body {
   margin-bottom: 15px;
 }
 
-/* BUTTONS */
 button {
   width: 100%;
   padding: 14px;
@@ -171,22 +277,25 @@ button:active {
   transform: scale(0.95);
 }
 
-/* TAB BAR */
-.tab-bar {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  height: 70px;
-  background: white;
-  display: flex;
-  border-top: 1px solid #ddd;
+.enter-score {
+  background: #007aff;
+  padding: 8px 12px;
+  font-size: 14px;
 }
 
-.tab-bar button {
-  flex: 1;
-  background: none;
-  color: black;
+/* =========================
+   GRID (ADDED)
+========================= */
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
+
+/* =========================
+   NAVIGATION / MENU
+========================= */
 
 .top-bar {
   height: 60px;
@@ -217,89 +326,34 @@ button:active {
   padding-top: 80px;
 }
 
-
-.success {
-  background: #00c853;
-  color: white;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  margin-top: 6px;
-  animation: fadeIn 0.3s ease;
+.side-menu.open {
+  left: 0;
 }
-
-.game-row {
-  margin-bottom: 25px;
-}
-
-.game-label {
-  font-size: 11px;
-  opacity: 0.5;
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  font-weight: 600;
-}
-
-.teams {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 10px;
-}
-
-.score-input {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.score-input input {
-  width: 50px;
-  height: 50px;
-  background: #ddd;
-  border: none;
-  font-size: 20px;
-  text-align: center;
-}
-
-.set-container {
-  background: rgba(20,20,20,0.85);
-  border-radius: 20px;
-  padding: 16px;
-  margin-bottom: 20px;
-}
-
-.set-title {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 10px;
-}
-
 
 .side-menu button {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 16px;
-  padding: 14px 20px;
-  color: white;
-  border: none;
+  width: 100%;
   background: none;
+  color: white;
+  padding: 15px;
+  text-align: left;
 }
 
 .side-menu button:hover {
   background: rgba(255,255,255,0.08);
 }
 
-.side-menu.open {
-  left: 0;
-}
+/* =========================
+   OVERLAY
+========================= */
 
 .overlay {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.4);
-  backdrop-filter: blur(8px); /* 🔥 THIS IS THE BLUR */
+  backdrop-filter: blur(8px);
   z-index: 9998;
   display: none;
 }
@@ -308,105 +362,54 @@ button:active {
   display: block;
 }
 
-.side-menu button {
-  display: block;
+/* =========================
+   TAB BAR
+========================= */
+
+.tab-bar {
+  position: absolute;
+  bottom: 0;
   width: 100%;
+  height: 70px;
+  background: white;
+  display: flex;
+  border-top: 1px solid #ddd;
+}
+
+.tab-bar button {
+  flex: 1;
   background: none;
-  color: white;
-  padding: 15px;
-  text-align: left;
+  color: black;
 }
 
+/* =========================
+   RANKINGS
+========================= */
 
-.tie {
-  background: #888;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-}
-
-.score-editable {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.score-editable input {
-  width: 36px;
-  height: 36px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid #444;
-  color: white;
-  font-size: 18px;
-  text-align: center;
-}
-
-.score-editable input:focus {
-  outline: none;
-  border-bottom: 2px solid #00c853;
-}
-
-
-.match-card {
+.rank-card {
   background: rgba(20,20,20,0.9);
-  border-radius: 16px;
-  padding: 15px;
-  margin-bottom: 12px;
+  padding: 20px;
+  border-radius: 20px;
+}
+
+.rank-header {
   display: flex;
-  position: relative;
   justify-content: space-between;
-  align-items: center;
 }
 
-.match-left {
-  font-size: 14px;
-}
-
-.teamA {
-  font-weight: 600;
-}
-
-.teamB {
-  opacity: 0.7;
-}
-
-.match-right {
+.rank-score {
   text-align: right;
 }
 
-.score {
-  font-size: 20px;
+#bigStat {
+  font-size: 40px;
   font-weight: 700;
+  color: #00c853;
 }
 
-.win {
-  background: #00c853;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-}
-
-.loss {
-  background: #ff5252;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-}
-
-.enter-score {
-  background: #007aff;
-  padding: 8px 12px;
-  font-size: 14px;
-}
-
-/* GRID */
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
+/* =========================
+   LOADING SCREEN
+========================= */
 
 #loading-screen {
   position: fixed;
@@ -450,35 +453,22 @@ button:active {
   animation-delay: 0.8s;
 }
 
-@keyframes bounceBall {
-  0% {
-    transform: translateY(-30px);
-    opacity: 1;
-  }
-  30% {
-    transform: translateY(5px);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
-  70% {
-    transform: translateY(3px);
-  }
-  100% {
-    transform: translateY(0);
-    opacity: 1;
-  }
+/* =========================
+   ANIMATIONS
+========================= */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+  to { opacity: 0; visibility: hidden; }
 }
 
 @keyframes slideIn {
-  from {
-    transform: translateX(100px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+  from { transform: translateX(100px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
 
 @keyframes bounce {
@@ -487,12 +477,18 @@ button:active {
   100% { transform: translateY(0); opacity: 1; }
 }
 
-
-
-/* ANIMATIONS */
-@keyframes fadeOut {
-  to { opacity: 0; visibility: hidden; }
+/* EXTRA ANIMATION (ADDED) */
+@keyframes bounceBall {
+  0% { transform: translateY(-30px); opacity: 1; }
+  30% { transform: translateY(5px); }
+  50% { transform: translateY(-10px); }
+  70% { transform: translateY(3px); }
+  100% { transform: translateY(0); opacity: 1; }
 }
+
+/* =========================
+   DARK MODE
+========================= */
 
 @media (prefers-color-scheme: dark) {
   body {
