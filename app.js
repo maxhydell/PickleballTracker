@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbx4MF4u7sgVnnNFKC5HnuXGkAXMBxrSAaCKfPT3BvMCo-ir0pKSEPAdcERXXgPd3wSZ/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbyDYZQDgP9CC58jaRgKN1u7Lc5twLzTojydU2p37pJo-MYqQEqTL0c_vYs9sxvessZ-/exec";
 
 function log(label, data) {
   console.log("🔥", label, data);
@@ -37,14 +37,12 @@ function showPage(id) {
 }
 
 
-async function callAPI(data) {
-  const res = await fetch(API_URL, {
-    method: "POST",
-    body: JSON.stringify(data)
-  });
+async function callAPI(params) {
+  const query = new URLSearchParams(params).toString();
+
+  const res = await fetch(`${API_URL}?${query}`);
   return await res.json();
 }
-
 
 async function loadSets() {
   const data = await callAPI({ action: "getTodaySets" });
