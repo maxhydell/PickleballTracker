@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbxfM8TFkDi1SYkiscAv0vXbl7VJXmWAgRXSWsE1RW8ct0NEK9Bp3q--4f8ShcmdI6JO/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxsAHAp4N6qK_MP-Ax0T8CRdNUhae0iQbcx3mT8kM8ia0U4i7R7KqOkPf89T_7HIfEy/exec";
 
 function log(label, data) {
   console.log("🔥", label, data);
@@ -90,8 +90,8 @@ async function loadSets() {
   log("SETS DATA", data);
 
   const container = document.querySelector("#input #setsContainer");
-  container.innerHTML = "";
   if (!container) return;
+  container.innerHTML = "";
 
 
   if (!data || !Array.isArray(data)) {
@@ -316,11 +316,17 @@ async function submitNewPlayer() {
 
 
 async function loadSchedule() {
+  console.log("🚀 loadSchedule called");
+
   const data = await callAPI({ action: "getSchedule" });
+  console.log("📦 schedule data:", data);
+
   if (!data || !Array.isArray(data)) {
-    console.error("Schedule failed:", data);
+    console.error("❌ BAD SCHEDULE DATA:", data);
+    document.getElementById("scheduleList").innerHTML = "Failed to load schedule";
     return;
   }
+
   const rankings = await callAPI({ action: "getUserTrend" });
 
   function getWinPct(name) {
@@ -351,6 +357,7 @@ async function loadSchedule() {
   });
 
   container.innerHTML = data.map((row, i) => {
+    console.log("Row:", row);
     const d = new Date(row.date);
     const dayName = d.toLocaleDateString("en-US",{weekday:"long"});
 
@@ -369,7 +376,7 @@ async function loadSchedule() {
 
           ${i === topDayIndex ? `<div class="tag">Top Day</div>` : ""}
 
-          <div class="carrot">⌄</div>
+          <div class="carrot"></div>
         </div>
 
         <div class="day-body">
@@ -450,19 +457,40 @@ async function loadRankings() {
 
   // POPULATE DROPDOWN
   const select = document.getElementById("playerSelect");
-  select.innerHTML = data.map(p =>
-    `<option value="${p.name.toLowerCase()}">${capitalize(p.name)}</option>`
-  ).join("");
+  if (!select.dataset.loaded) {
+    select.innerHTML = data.map(p =>
+      `<option value="${p.name.toLowerCase()}">${capitalize(p.name)}</option>`
+    ).join("");
+
+    select.dataset.loaded = "true";
+  }
 
   // DEFAULT SELECT
   select.value = selectedPlayer;
 
   const player = data.find(p => p.name.toLowerCase() === select.value);
-  selectedPlayer = select.value;
+  selectedPlayer = select.value || selectedPlayer;
 
   // BIG STAT
   document.getElementById("bigStat").innerText =
-    (player.winPct * 100).toFixed(2) + "%";
+    Math.round(player.winPct * 100) + "%";
+
+
+  //analytics
+
+  const historyData = await callAPI({ action: "getHistory" });
+
+  const streak = getWinStreak(historyData, selectedPlayer);
+  const best = getBestDay(historyData, selectedPlayer);
+  const consistency = getConsistency(historyData, selectedPlayer);
+
+  document.getElementById("analytics").innerHTML = `
+    <div>🔥 Streak: ${streak}</div>
+    <div>🏆 Best: ${best ? Math.round(best.winPct*100)+"%" : "--"}</div>
+    <div>📊 Consistency: ${consistency}%</div>
+  `;
+
+
 
   // RANK
   const rank = data.findIndex(p => p.name === player.name) + 1;
@@ -470,26 +498,29 @@ async function loadRankings() {
     `#${rank} Place`;
 
   // GRAPH DATA
-const history = data
+const history = await callAPI({ action: "getHistory" });
+
+const playerHistory = history
   .filter(p => p.name.toLowerCase() === selectedPlayer)
-  .map((p, i) => ({
-    date: `Day ${i+1}`, // replace later with real dates if you add them
+  .map(p => ({
+    date: new Date(p.date).toLocaleDateString("en-US", {
+      month: "numeric",
+      day: "numeric"
+    }),
     value: Math.round(p.winPct * 100)
   }));
 
-const values = history.map(x => x.value);
+const values = playerHistory.map(x => x.value);
 
-const avg = values[values.length - 1] || 50;
+const latest = values[values.length - 1] || 50;
 
-const max = avg + 8;
-const min = avg - 8;
-
-if (chart) chart.destroy();
+const max = latest + 8;
+const min = latest - 8;
 
 chart = new Chart(document.getElementById("chart"), {
   type: "line",
   data: {
-    labels: history.map(x => x.date),
+    labels: playerHistory.map(x => x.date),
     datasets: [{
       data: values,
       borderWidth: 3,
@@ -502,7 +533,7 @@ chart = new Chart(document.getElementById("chart"), {
         min,
         max,
         ticks: {
-          callback: v => Math.round(v) + "%"
+          callback: v => v + "%"
         }
       }
     },
@@ -511,9 +542,12 @@ chart = new Chart(document.getElementById("chart"), {
     }
   }
 });
+  const filtered = data.filter(p =>
+    p.winPct > 0 || p.pointsAvg > 0
+  );
 
-  renderLeaderboard(data);
-}
+  renderLeaderboard(filtered);
+  }
 
 
 
@@ -551,10 +585,14 @@ function renderLeaderboard(data) {
   `;
 }
 
-
+async function getHistory() {
+  return await callAPI({ action: "getHistory" });
+}
 
 async function finishDay() {
+  await callAPI({ action: "saveHistory" });
   const res = await callAPI({ action: "done" });
+
 
   document.getElementById("dayStats").innerHTML = `
     <div class="success">
@@ -563,6 +601,34 @@ async function finishDay() {
       Losses: ${res.losses || 0}
     </div>
   `;
+}
+
+
+function getWinStreak(history, player) {
+  const games = history
+    .filter(p => p.name.toLowerCase() === player)
+    .map(p => p.winPct);
+
+  let streak = 0;
+
+  for (let i = games.length - 1; i >= 0; i--) {
+    if (games[i] > 0.5) streak++;
+    else break;
+  }
+
+  return streak;
+}
+
+
+function getBestDay(history, player) {
+  const games = history
+    .filter(p => p.name.toLowerCase() === player);
+
+  if (!games.length) return null;
+
+  return games.reduce((best, curr) =>
+    curr.winPct > best.winPct ? curr : best
+  );
 }
 
 
@@ -616,9 +682,19 @@ function updateScore(set, gameIndex, input) {
 
   scoreTimeout = setTimeout(() => {
     const score = `${inputs[0].value}-${inputs[1].value}`;
-    input.blur();
     const a = Number(inputs[0].value);
     const b = Number(inputs[1].value);
+
+    if (a === 0 && b === 0) {
+      callAPI({
+        action: "submitScore",
+        set,
+        game: gameIndex + 1,
+        score: ""
+      });
+      return;
+    }
+    input.blur();
 
     let result = "tie";
     if (a > b) result = "win";
