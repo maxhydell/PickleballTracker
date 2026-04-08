@@ -61,7 +61,14 @@
         <div>
           <h2>Bite Strength</h2>
           <p>Based on tournament performance</p>
-          <select id="playerSelect" onchange="loadRankings()"></select>
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Player</span>
+            </label>
+            <div class="block">
+              <select id="playerSelect" class="select select-bordered" onchange="loadRankings()"></select>
+            </div>
+          </div>
         </div>
         <div class="rank-score">
           <div id="bigStat">--</div>

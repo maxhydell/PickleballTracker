@@ -4,11 +4,46 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+  font-family: 'League Spartan', sans-serif;
   background: radial-gradient(circle at top, #0a1a2f, #000);
   color: white;
   overflow-y: auto;
 }
+
+
+h1, h2 {
+  color: #aaa;
+  font-weight: 700;
+}
+
+/* carrot */
+.carrot {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid #aaa;
+  border-bottom: 2px solid #aaa;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+  margin-left: 10px;
+}
+
+.set-header.active .carrot,
+.day-header.active .carrot {
+  transform: rotate(-135deg);
+}
+
+
+
+/* rankings */
+
+#rankings {
+  padding-top: 10px;
+}
+
+.rank-card {
+  margin-top: 0;
+}
+
 
 /* =========================
    TEXT / HEADERS / set ui
@@ -183,9 +218,13 @@ body {
 .leaderboard-header,
 .leaderboard-row {
   display: grid;
-  grid-template-columns: 40px 1fr 80px 100px;
+  grid-template-columns: 60px 1.5fr 80px 100px;
   padding: 10px;
   border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.leaderboard-row:nth-child(even) {
+  background: rgba(255,255,255,0.03);
 }
 
 .leaderboard-row.you {
@@ -476,6 +515,20 @@ button:active {
 /* =========================
    RANKINGS
 ========================= */
+
+.select {
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  background: #111;
+  color: white;
+  border: 1px solid #333;
+}
+
+.label-text {
+  color: #aaa;
+  font-size: 14px;
+}
 
 .rank-card {
   background: rgba(20,20,20,0.9);

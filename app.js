@@ -111,7 +111,7 @@ async function loadSets() {
     setWrapper.innerHTML = `
       <div class="set-header" onclick="toggleSet(this)">
         <span>Set ${match.set}</span>
-       <span class="carrot">⌄</span>
+       <span class="carrot"></span>
       </div>
       <div class="set-body"></div>
     `;
@@ -317,6 +317,10 @@ async function submitNewPlayer() {
 
 async function loadSchedule() {
   const data = await callAPI({ action: "getSchedule" });
+  if (!data || !Array.isArray(data)) {
+    console.error("Schedule failed:", data);
+    return;
+  }
   const rankings = await callAPI({ action: "getUserTrend" });
 
   function getWinPct(name) {
@@ -466,39 +470,53 @@ async function loadRankings() {
     `#${rank} Place`;
 
   // GRAPH DATA
-  const values = data.map(p => p.winPct * 100);
+const history = data
+  .filter(p => p.name.toLowerCase() === selectedPlayer)
+  .map((p, i) => ({
+    date: `Day ${i+1}`, // replace later with real dates if you add them
+    value: Math.round(p.winPct * 100)
+  }));
 
-  const max = Math.max(...values) + 8;
-  const min = Math.min(...values) - 8;
+const values = history.map(x => x.value);
 
-  if (chart) chart.destroy();
+const avg = values[values.length - 1] || 50;
 
-  chart = new Chart(document.getElementById("chart"), {
-    type: "line",
-    data: {
-      labels: data.map(p => capitalize(p.name)),
-      datasets: [{
-        data: values,
-        borderColor: "#00c853",
-        borderWidth: 3,
-        tension: 0.4
-      }]
-    },
-    options: {
-      scales: {
-        y: {
-          min,
-          max,
-          ticks: {
-            callback: v => v + "%"
-          }
+const max = avg + 8;
+const min = avg - 8;
+
+if (chart) chart.destroy();
+
+chart = new Chart(document.getElementById("chart"), {
+  type: "line",
+  data: {
+    labels: history.map(x => x.date),
+    datasets: [{
+      data: values,
+      borderWidth: 3,
+      tension: 0.4
+    }]
+  },
+  options: {
+    scales: {
+      y: {
+        min,
+        max,
+        ticks: {
+          callback: v => Math.round(v) + "%"
         }
       }
+    },
+    plugins: {
+      legend: { display: false }
     }
-  });
+  }
+});
 
   renderLeaderboard(data);
 }
+
+
+
 
 function capitalize(name) {
   return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
@@ -525,7 +543,7 @@ function renderLeaderboard(data) {
         <div class="leaderboard-row ${p.name.toLowerCase() === "max" ? "you" : ""}">
           <span>${i + 1}</span>
           <span>${capitalize(p.name)}</span>
-          <span>${(p.winPct * 100).toFixed(2)}%</span>
+          <span>${Math.round(p.winPct * 100)}%</span>
           <span>${p.pointsAvg.toFixed(2)}</span>
         </div>
       `).join("")}
