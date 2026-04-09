@@ -41,17 +41,15 @@
   </div>
 
   <!-- PAGES -->
-
-  <div id="input" class="page active">
+<div id="input" class="page active">
     <h1>Today's Matches</h1>
+    <div id="dashboardAnalytics" class="analytics-grid"></div>
 
     <div id="setsContainer"></div>
 
     <div class="card">
       <button onclick="finishDay()">DONE</button>
       <div id="dayStats"></div>
-    </div>
-
     </div>
   </div>
 
@@ -77,16 +75,51 @@
         </div>
       </div>
 
-    <p class="sub">Last 90 days</p>
+      <p class="sub">Last 90 days</p>
 
-    <canvas id="chart"></canvas>
-    <div id="leaderboard"></div>
+      <canvas id="chart"></canvas>
+      <div id="leaderboard"></div>
+    </div>
   </div>
 
   <div id="schedule" class="page">
     <h1>Schedule</h1>
-    <div class="add-player" onclick="openAddPlayer()">+ Add Player</div>
+
+    <div id="addModal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <input id="newName" placeholder="Name">
+        <input id="newPhone" placeholder="Phone">
+        <input id="newRating" placeholder="Rating">
+        <div class="modal-actions">
+          <button onclick="submitNewPlayer()">Add</button>
+          <button onclick="document.getElementById('addModal').style.display='none'">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="schedule-header">
+      <div>
+        <h2>This Week</h2>
+        <div class="week-range" id="weekRange">4/6 - 4/10</div>
+      </div>
+
+      <div class="add-player-btn" onclick="openAddPlayer()">
+        + Add Player
+      </div>
+    </div>
+
     <div id="scheduleList"></div>
+
+    <div class="schedule-footer">
+      <div>
+        <h2>This Week</h2>
+        <div class="week-range">4/6 - 4/10</div>
+      </div>
+
+      <div class="add-player-btn" onclick="openAddPlayer()">
+        + Add Player
+      </div>
+    </div>
   </div>
 
   <div id="sets" class="page">
@@ -94,20 +127,6 @@
     <div id="setsList"></div>
   </div>
 
-</div>
-
-  <!-- ✅ ADD PLAYER MODAL (PUT HERE) -->
-  <div id="addModal" class="modal">
-    <div class="modal-content">
-      <input id="newName" placeholder="Name">
-      <input id="newPhone" placeholder="Phone">
-      <input id="newRating" placeholder="Rating">
-      <button onclick="submitNewPlayer()">Add</button>
-    </div>
-  </div>
-
-
-
-<script src="app.js"></script>
+</div> <script src="app.js"></script>
 </body>
 </html>
