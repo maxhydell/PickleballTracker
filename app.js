@@ -180,8 +180,9 @@ function toggleSet(el) {
 
   el.classList.toggle("active");
 
-  body.style.display =
-    body.style.display === "none" ? "block" : "none";
+  const isOpen = body.style.display === "block";
+
+  body.style.display = isOpen ? "none" : "block";
 }
 
 
@@ -291,6 +292,28 @@ function toggleCheck(btn, date, col) {
       col,
       status: 2
     });
+
+    setTimeout(() => {
+      checkFullDay(date);
+    }, 300);
+  }
+}
+
+
+function checkFullDay(date) {
+  const card = document.querySelector(`.day-card[data-date="${date}"]`);
+  if (!card) return;
+
+  const checks = card.querySelectorAll(".check-btn");
+  const allGreen = [...checks].every(c => c.dataset.state == 2);
+
+  if (allGreen && !card.classList.contains("day-complete")) {
+    card.classList.add("day-complete");
+
+    callAPI({
+      action: "saveScheduleDay",
+      date
+    });
   }
 }
 
@@ -387,8 +410,10 @@ async function loadSchedule() {
       .map(p => p ? capitalize(p) : "")
       .join(", ");
 
+   
+    const allConfirmed = row.status && row.status.every(s => s == 2);
     return `
-      <div class="day-card">
+      <div class="day-card ${allConfirmed ? "day-complete" : ""}" data-date="${row.date}">
         <div class="day-header" onclick="toggleSet(this)">
           <div>
             <div class="day-players">${players}</div>
@@ -401,33 +426,39 @@ async function loadSchedule() {
         </div>
 
         <div class="day-body">
-          ${[0,1,2,3].map(col => {
-            const status = row.status?.[col] || 0;
+          <div class="player-row">
+            ${[0,1,2,3].map(col => {
+              const status = row.status?.[col] || 0;
 
-            let img = "white.png";
-            if (status == 1) img = "orange.png";
-            if (status == 2) img = "green.png";
+              let img = "white.png";
+              if (status == 1) img = "orange.png";
+              if (status == 2) img = "green.png";
 
-            return `
-              <div class="player-slot">
-                <input class="player-input"
-                  placeholder="Add player..."
-                  ${status == 2 ? "disabled style='border:2px solid #00c853'" : ""}
-                  onfocus="attachAutocomplete(this, '${row.date}', ${col+3})">
+              return `
+                <div class="player-slot">
+                  <input class="player-input"
+                    value="${row.players?.[col] ? capitalize(row.players[col]) : ""}"
+                    ${row.players?.[col] ? "disabled" : ""}
+                    ${status == 2 ? "disabled style='border:2px solid #00c853'" : ""}
+                    onfocus="attachAutocomplete(this, '${row.date}', ${col+1})">
 
-                <img src="imessage.png" class="sms-btn"
-                  ${status == 2 ? "style='display:none'" : ""}
-                  onclick="sendSMS(this, '${row.date}', ${col+1})">
+                  ${status == 2 ? `
+                    <img src="unlock.png" class="sms-btn"
+                      onclick="unlockPlayer(this, '${row.date}', ${col+1})">
+                  ` : `
+                    <img src="imessage.png" class="sms-btn"
+                      onclick="sendSMS(this, '${row.date}', ${col+1})">
+                  `}
 
-                <img src="${img}" class="check-btn"
-                  data-state="${status}"
-                  onclick="toggleCheck(this, '${row.date}', ${col+1})">
-              </div>
-            `;
-          }).join("")}
+                  <img src="${img}" class="check-btn"
+                    data-state="${status}"
+                    onclick="toggleCheck(this, '${row.date}', ${col+1})">
+                </div>
+              `;
+            }).join("")}
+          </div>
         </div>
-      </div>
-    `;
+      `;
   }).join("");
 }
 
@@ -474,12 +505,20 @@ async function loadRankings() {
   if (!data || !data.length) return;
 
   // SORT BY WIN %
-  data.sort((a, b) => b.winPct - a.winPct);
+// 🔥 leaderboard = NORMAL SORT
+  const sorted = [...data].sort((a, b) => b.winPct - a.winPct);
+
+// 🔥 dropdown = MAX forced top
+  const dropdownSorted = [...data].sort((a, b) => {
+    if (a.name.toLowerCase() === "max") return -1;
+    if (b.name.toLowerCase() === "max") return 1;
+    return b.winPct - a.winPct;
+  });
 
   // POPULATE DROPDOWN
   const select = document.getElementById("playerSelect");
   if (!select.dataset.loaded) {
-    select.innerHTML = data.map(p =>
+    select.innerHTML = dropdownSorted.map(p =>
       `<option value="${p.name.toLowerCase()}">${capitalize(p.name)}</option>`
     ).join("");
 
@@ -583,9 +622,32 @@ chart = new Chart(document.getElementById("chart"), {
     p.winPct > 0 || p.pointsAvg > 0
   );
 
-  renderLeaderboard(filtered);
+  renderLeaderboard(sorted);
   }
 
+
+
+function unlockPlayer(btn, date, col) {
+  const slot = btn.parentElement;
+  const input = slot.querySelector("input");
+
+  input.disabled = false;
+  input.value = "";
+  input.style.border = "";
+
+  btn.src = "imessage.png";
+
+  const check = slot.querySelector(".check-btn");
+  check.src = "white.png";
+  check.dataset.state = 0;
+
+  callAPI({
+    action: "updatePlayerStatus",
+    date,
+    col,
+    status: 0
+  });
+}
 
 
 
@@ -712,8 +774,11 @@ function attachAutocomplete(input, date, col) {
 
     dropdown.querySelectorAll(".auto-item").forEach(el => {
       el.onclick = () => {
+        if (input.value) return;
         input.value = el.innerText;
         dropdown.innerHTML = "";
+
+
 
         callAPI({
           action: "updateSchedule",
@@ -810,7 +875,6 @@ function updateScore(set, gameIndex, input) {
 
 function renderDashboardAnalytics(history, player) {
   const games = history.filter(p => p.name.toLowerCase() === player);
-
   if (!games.length) return;
 
   const avgWin = games.reduce((a,b)=>a+b.winPct,0)/games.length;
@@ -819,11 +883,44 @@ function renderDashboardAnalytics(history, player) {
   const best = getBestDay(history, player);
   const streak = getWinStreak(history, player);
 
+  // longest losing streak
+  let loseStreak = 0, maxLose = 0;
+  games.forEach(g => {
+    if (g.winPct < 0.5) {
+      loseStreak++;
+      maxLose = Math.max(maxLose, loseStreak);
+    } else {
+      loseStreak = 0;
+    }
+  });
+
+  // best day of week
+  const days = {};
+  games.forEach(g => {
+    const d = new Date(g.date).toLocaleDateString("en-US",{weekday:"short"});
+    if (!days[d]) days[d] = [];
+    days[d].push(g.winPct);
+  });
+
+  let bestDay = "--", bestVal = 0;
+  Object.keys(days).forEach(d => {
+    const avg = days[d].reduce((a,b)=>a+b,0)/days[d].length;
+    if (avg > bestVal) {
+      bestVal = avg;
+      bestDay = d;
+    }
+  });
+
   document.getElementById("dashboardAnalytics").innerHTML = `
-    <div class="analytics-card green">🔥 Win %: ${Math.round(avgWin*100)}%</div>
-    <div class="analytics-card blue">🎯 Avg Pts: ${avgPoints.toFixed(1)}</div>
-    <div class="analytics-card yellow">🏆 Best Day: ${best ? Math.round(best.winPct*100)+"%" : "--"}</div>
-    <div class="analytics-card red">📉 Streak: ${streak}</div>
+    <div class="analytics-card green">🔥 Win %<br>${Math.round(avgWin*100)}%</div>
+    <div class="analytics-card blue">🎯 Avg Pts<br>${avgPoints.toFixed(1)}</div>
+    <div class="analytics-card yellow">🏆 Best Day<br>${best ? Math.round(best.winPct*100)+"%" : "--"}</div>
+    <div class="analytics-card red">📉 Win Streak<br>${streak}</div>
+    
+    <div class="analytics-card red">❌ Losing Streak<br>${maxLose}</div>
+    <div class="analytics-card blue">📅 Best Day<br>${bestDay}</div>
+    <div class="analytics-card green">⚡ Consistency<br>${getConsistency(history, player)}%</div>
+    <div class="analytics-card yellow">🎮 Games<br>${games.length}</div>
   `;
 }
 
@@ -836,20 +933,25 @@ function navigate(page) {
 
 window.onload = async () => {
   try {
+    // 🔥 LOAD SETS FIRST (critical)
     await loadSets();
-    await loadPlayers();
+
+    // 🔥 HIDE LOADING IMMEDIATELY AFTER SETS
+    const loading = document.getElementById("loading-screen");
+    if (loading) {
+      loading.style.opacity = "0";
+      setTimeout(() => loading.style.display = "none", 300);
+    }
+
+    // 🚀 LOAD EVERYTHING ELSE IN BACKGROUND
+    loadPlayers();
+    loadRankings();
+    loadSchedule();
+
+    callAPI({ action: "getHistory" })
+      .then(history => renderDashboardAnalytics(history, selectedPlayer));
+
   } catch (err) {
     console.error("LOAD FAILED", err);
-  }
-
-
-  const history = await callAPI({ action: "getHistory" });
-  renderDashboardAnalytics(history, selectedPlayer);
-
-  // ALWAYS RUN THIS
-  const loading = document.getElementById("loading-screen");
-  if (loading) {
-    loading.style.opacity = "0";
-    setTimeout(() => loading.style.display = "none", 500);
   }
 };
