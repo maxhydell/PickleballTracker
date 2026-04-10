@@ -1,7 +1,7 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbyb7F3okADxJpkwAZahSRuGkKArYUwS8DBPAnvuSb5auQOSWNEg-4i_Ffy7y7RHFe9M/exec";
 function getPlayerFromURL() {
   const params = new URLSearchParams(window.location.search);
-  return params.get("player");
+  return params.get("p");
 }
 
 async function callAPI(params) {
@@ -38,28 +38,48 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  window.fullData = data;
   // fallback = leaderboard
   renderLeaderboard(data);
 });
 
 function renderPlayerCard(player) {
   document.getElementById("leaderboard").innerHTML = `
-    <div class="card">
-      <div class="card-title">🏆 ${capitalize(player.name)}</div>
+    <div class="player-card">
 
-      <div style="font-size: 32px; margin: 10px 0;">
-        ${Math.round(player.winPct * 100)}%
+      <div class="player-name">
+        ${capitalize(player.name)}
       </div>
 
-      <div>Win Percentage</div>
+      <div class="stats-row">
+        <div class="stat-box win">
+          <div class="stat-value">${Math.round(player.winPct * 100)}%</div>
+          <div class="stat-label">Win Rate</div>
+        </div>
 
-      <div style="margin-top: 10px;">
-        Avg Points: ${player.pointsAvg.toFixed(1)}
+        <div class="stat-box points">
+          <div class="stat-value">${player.pointsAvg.toFixed(1)}</div>
+          <div class="stat-label">Avg Points</div>
+        </div>
       </div>
 
-      <div style="margin-top: 10px; color:#aaa;">
-        You're climbing the leaderboard 📈
+      <div class="trend">
+        📈 Trending Up
       </div>
+
+      <div class="mini-leaderboard">
+        <div class="mini-title">Leaderboard</div>
+        ${window.fullData
+          .sort((a,b)=>b.winPct - a.winPct)
+          .map((p,i)=>`
+            <div class="mini-row ${p.name === player.name ? 'highlight' : ''}">
+              <span>#${i+1}</span>
+              <span>${capitalize(p.name)}</span>
+              <span>${Math.round(p.winPct*100)}%</span>
+            </div>
+          `).join("")}
+      </div>
+
     </div>
   `;
 }
@@ -88,7 +108,11 @@ function showInstallGuide() {
   }
 }
 
-// ENTER MAIN APP
 function enterApp() {
-  window.location.href = "https://maxhydell.github.io/";
+  const player = getPlayerFromURL();
+  if (player) {
+    window.location.href = `https://maxhydell.github.io/pbtracker/?${player}`;
+  } else {
+    window.location.href = "https://maxhydell.github.io/pbtracker/";
+  }
 }
