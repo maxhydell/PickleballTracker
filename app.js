@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbxp_e1YMymTZoY421Yq8YwMBFXmBh3HERKABIfyLOjrmypQx3aNnftJzFbqPBwH21c/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbyuGIRBfOKGZHbJhRcNj8ChTR1Kf72kAKmujpLJK-vYn-SyeM9L62qZKmbQRU9gxR7-/exec";
 
 function log(label, data) {
   console.log("🔥", label, data);
@@ -564,7 +564,10 @@ function renderChart(data) {
 
 let chart;
 
-let selectedPlayer = "max";
+function getPlayerFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("p")?.toLowerCase();
+}
 
 async function loadRankings() {
   const data = await callAPI({ action: "getUserTrend" });
@@ -592,8 +595,12 @@ async function loadRankings() {
   }
 
   // DEFAULT SELECT
-  if (!select.value) {
-    select.value = selectedPlayer;
+  const urlPlayer = getPlayerFromURL();
+
+  if (urlPlayer && data.find(p => p.name.toLowerCase() === urlPlayer)) {
+    select.value = urlPlayer;
+  } else if (!select.value) {
+    select.value = "max";
   }
 
   selectedPlayer = select.value;
@@ -630,15 +637,15 @@ async function loadRankings() {
   // GRAPH DATA
 
 
-const playerHistory = history
-  .filter(p => p.name.toLowerCase() === selectedPlayer)
-  .slice(-30)   // 🔥 HUGE SPEED BOOST
-  .map(p => ({
-    date: new Date(p.date).toLocaleDateString("en-US", {
-      month: "numeric",
-      day: "numeric"
-    }),
-    value: Math.round(p.winPct * 100)
+  const playerHistory = history
+    .filter(p => p.name.toLowerCase() === selectedPlayer)
+    .slice(-30)   // 🔥 HUGE SPEED BOOST
+    .map(p => ({
+      date: new Date(p.date).toLocaleDateString("en-US", {
+        month: "numeric",
+        day: "numeric"
+      }),
+      value: Math.round(p.winPct * 100)
   }));
   
 
@@ -945,14 +952,160 @@ function updateScore(set, gameIndex, input) {
   }, 1000);
 }
 
+async function getAllSets() {
+  return await callAPI({ action: "getAllSets" });
+}
+
+
+function getBestPartner(sets, player) {
+  const map = {};
+
+  sets.forEach(set => {
+    const teamA = set.teamA.split("/").map(p => p.trim().toLowerCase());
+    const teamB = set.teamB.split("/").map(p => p.trim().toLowerCase());
+
+    const allGames = set.scores || [];
+
+    allGames.forEach(score => {
+      if (!score.includes("-")) return;
+
+      const [a,b] = score.split("-").map(Number);
+      const winnerA = a > b;
+
+      if (teamA.includes(player)) {
+        const partner = teamA.find(p => p !== player);
+        if (!map[partner]) map[partner] = { wins:0, games:0 };
+
+        map[partner].games++;
+        if (winnerA) map[partner].wins++;
+      }
+
+      if (teamB.includes(player)) {
+        const partner = teamB.find(p => p !== player);
+        if (!map[partner]) map[partner] = { wins:0, games:0 };
+
+        map[partner].games++;
+        if (!winnerA) map[partner].wins++;
+      }
+    });
+  });
+
+  let best = null, bestPct = 0;
+
+  Object.keys(map).forEach(p => {
+    const pct = map[p].wins / map[p].games;
+    if (pct > bestPct) {
+      bestPct = pct;
+      best = p;
+    }
+  });
+
+  return best;
+}
+
+function analyzePlayerFromSets(sets, player) {
+  player = player.toLowerCase();
+
+  let partnerStats = {};
+  let opponentStats = {};
+  let gameResults = []; // 1 = win, 0 = loss
+
+  sets.forEach(set => {
+    const teamA = set.teamA.toLowerCase().split("/").map(p => p.trim());
+    const teamB = set.teamB.toLowerCase().split("/").map(p => p.trim());
+
+    set.scores.forEach(score => {
+      if (!score || !score.includes("-")) return;
+
+      const [a, b] = score.split("-").map(Number);
+      const winnerA = a > b;
+
+      const isA = teamA.includes(player);
+      const isB = teamB.includes(player);
+      if (!isA && !isB) return;
+
+      const myTeam = isA ? teamA : teamB;
+      const oppTeam = isA ? teamB : teamA;
+
+      const won = (isA && winnerA) || (isB && !winnerA);
+      gameResults.push(won ? 1 : 0);
+
+      // ✅ BEST PARTNER
+      const partner = myTeam.find(p => p !== player);
+      if (partner) {
+        if (!partnerStats[partner]) partnerStats[partner] = { wins: 0, games: 0 };
+        partnerStats[partner].games++;
+        if (won) partnerStats[partner].wins++;
+      }
+
+      // ✅ HARDEST OPPONENT
+      oppTeam.forEach(o => {
+        if (!opponentStats[o]) opponentStats[o] = { wins: 0, games: 0 };
+        opponentStats[o].games++;
+        if (won) opponentStats[o].wins++;
+      });
+    });
+  });
+
+  // ===== BEST PARTNER =====
+  let bestPartner = "--";
+  let bestPct = -1;
+
+  Object.entries(partnerStats).forEach(([p, s]) => {
+    const pct = s.wins / s.games;
+    if (pct > bestPct) {
+      bestPct = pct;
+      bestPartner = p;
+    }
+  });
+
+  // ===== HARDEST OPPONENT =====
+  let hardestOpponent = "--";
+  let worstPct = 2;
+
+  Object.entries(opponentStats).forEach(([o, s]) => {
+    const pct = s.wins / s.games;
+    if (pct < worstPct) {
+      worstPct = pct;
+      hardestOpponent = o;
+    }
+  });
+
+  // ===== WIN / LOSING STREAK =====
+  let maxWin = 0, curWin = 0;
+  let maxLose = 0, curLose = 0;
+
+  gameResults.forEach(g => {
+    if (g === 1) {
+      curWin++;
+      curLose = 0;
+    } else {
+      curLose++;
+      curWin = 0;
+    }
+    maxWin = Math.max(maxWin, curWin);
+    maxLose = Math.max(maxLose, curLose);
+  });
+
+  return {
+    bestPartner,
+    hardestOpponent,
+    winStreak: maxWin,
+    loseStreak: maxLose
+  };
+}
+
 
 
 function renderDashboardAnalytics(history, player) {
   const games = history.filter(p => p.name.toLowerCase() === player);
   if (!games.length) return;
 
-  const avgWin = (games.reduce((a,b)=>a+b.winPct,0)/games.length)*100;
-  const avgPoints = games.reduce((a,b)=>a+b.pointsAvg,0)/games.length;
+  const rankings = await callAPI({ action: "getUserTrend" });
+  const playerStats = rankings.find(p => p.name.toLowerCase() === player);
+
+  const winPct = (playerStats?.winPct || 0) * 100;
+  const avgPoints = playerStats?.pointsAvg || 0;
 
   const streak = getWinStreak(history, player);
 
@@ -986,20 +1139,22 @@ function renderDashboardAnalytics(history, player) {
     <div class="analytics-main">
 
       <div class="analytics-title">Analytics</div>
-
-      <select id="dashPlayerSelect" onchange="changeDashboardPlayer(this.value)">
-        ${playersCache.map(p =>
-          `<option value="${p.name.toLowerCase()}" ${p.name.toLowerCase()===player?"selected":""}>
-            ${capitalize(p.name)}
-          </option>`
-        ).join("")}
-      </select>
+      <div class="analytics-header">
+        <select id="dashPlayerSelect" onchange="changeDashboardPlayer(this.value)">
+          ${playersCache.map(p =>
+            `<option value="${p.name.toLowerCase()}" ${p.name.toLowerCase()===player?"selected":""}>
+              ${capitalize(p.name)}
+            </option>`
+          ).join("")}
+        </select>
+      </div>
+      <div class="analytics-header">
 
       <div class="analytics-grid-big">
 
         <div class="stat green">
           <div class="stat-title">Best Partner</div>
-          <div class="stat-value">Shayne</div>
+          <div class="stat-value">${capitalize(deep.bestPartner)}</div>
         </div>
 
         <div class="stat blue">
@@ -1014,12 +1169,12 @@ function renderDashboardAnalytics(history, player) {
 
         <div class="stat purple">
           <div class="stat-title">Win Streak</div>
-          <div class="stat-value">${streak}</div>
+          <div class="stat-value">${deep.winStreak}</div>
         </div>
 
         <div class="stat red">
           <div class="stat-title">Hardest Opponent</div>
-          <div class="stat-value">James</div>
+          <div class="stat-value">${capitalize(deep.hardestOpponent)}</div>
         </div>
 
         <div class="stat teal">
@@ -1029,7 +1184,7 @@ function renderDashboardAnalytics(history, player) {
 
         <div class="stat orange">
           <div class="stat-title">Losing Streak</div>
-          <div class="stat-value">${maxLose}</div>
+          <div class="stat-value">${deep.loseStreak}</div>
         </div>
 
         <div class="stat gray">

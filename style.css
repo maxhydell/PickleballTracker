@@ -683,8 +683,8 @@ button:active {
   width: 100%;
   padding: 10px;
   border-radius: 10px;
-  background: #111;
-  color: white;
+  background: #111 !important;
+  color: white !important;
   border: 1px solid #333;
 }
 
@@ -854,12 +854,24 @@ button:active {
 
 
 /* analytics */
+
+
 .analytics-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: 12px;
+
+  width: 100%;
+  max-width: 100%;
+
+  margin-left: -4px;
+  margin-right: -4px;
 }
+.analytics-wrapper {
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+}
+
 .analytics-title {
   font-size: 18px;
   margin-bottom: 10px;
@@ -869,6 +881,11 @@ button:active {
   padding: 15px;
   border-radius: 16px;
   margin-bottom: 20px;
+}
+
+.analytics-main,
+.analytics-card {
+  width: 100%;
 }
 .analytics-card {
   background: rgba(20,20,20,0.9);
@@ -880,7 +897,8 @@ button:active {
 .analytics-grid-big {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: 56px; /* bigger spacing */
+  row-gap: 14px; 
 }
 
 .analytics-big {
@@ -896,18 +914,30 @@ button:active {
   gap: 10px;
 }
 
+.analytics-header {
+  margin-bottom: 0px; /* 🔥 BIGGER GAP ABOVE STATS */
+  margin-top: 8px; /* 🔥 BIGGER GAP ABOVE STATS */
+}
+
 .stat {
-  padding: 10px;
-  border-radius: 10px;
-  font-size: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 70px; /* forces cards to feel bigger */
+  background: rgba(255,255,255,0.03);
+  border-left: 4px solid #00c853;
 }
 .stat-value {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
 }
 .stat-title {
-  color: #aaa;
-  font-size: 11px;
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 
@@ -924,7 +954,6 @@ button:active {
 .analytics-card.red { border-left: 4px solid #ff3b30; }
 .analytics-card.blue { border-left: 4px solid #0a84ff; }
 .analytics-card.yellow { border-left: 4px solid #ffd60a; }
-
 
 
 
