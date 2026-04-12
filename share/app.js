@@ -17,7 +17,7 @@ function setHeroTitleWithLogo() {
   titleEl.innerHTML = `
     <span class="brand-inline">
       <span class="brand-mark sm hero-logo-mark" aria-hidden="true">
-        <img src="share/transparent.png" alt="">
+        <img src="transparent.png" alt="">
       </span>
       <span class="hero-app-name">pbTracker</span>
     </span>`;
