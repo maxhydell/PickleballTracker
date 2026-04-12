@@ -151,3 +151,23 @@ body {
 .mini-row.highlight {
   background: rgba(255,255,255,0.08);
 }
+
+[data-tilt-target='glare'] {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+
+  background: radial-gradient(
+    circle at var(--x, 50%) var(--y, 50%),
+    rgba(255,255,255,0.25),
+    transparent 60%
+  );
+
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.feature-card-3d:hover [data-tilt-target='glare'] {
+  opacity: 1;
+}

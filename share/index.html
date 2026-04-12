@@ -12,22 +12,55 @@
 
 <div class="container">
 
-  <h1 class="title">
+  <h1 class="title" id="dynamicTitle">
     <img src="share/transparent.png" class="logo">
     Pickleball Tracker
   </h1>
-  <p class="subtitle">Track games. Compete. Improve.</p>
-
+  <p class="subtitle" id="dynamicSubtitle">
+    Welcome to pbTracker.
+  </p>
   <div id="leaderboard" class="card"></div>
 
-  <div class="card">
-    <div class="card-title">Features</div>
-    <div>📊 Live Rankings</div>
-    <div>📅 Smart Scheduling</div>
-    <div>🏆 Match Tracking</div>
-    <div>📈 Player Analytics</div>
+<section id="features" class="relative py-24 lg:py-32 overflow-hidden" id="featuresSection">
+
+  <svg class="ball-trail w-full h-24 absolute -top-12 left-0" viewBox="0 0 1200 100" preserveAspectRatio="none">
+    <path class="ball-trail-path animate" d="M0,80 Q300,20 600,50 T1200,30"></path>
+  </svg>
+
+  <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+    <div class="text-center mb-16">
+      <h2 class="text-4xl md:text-5xl lg:text-6xl font-black text-white mb-6 tracking-tight">
+        Built for Players. <span class="gradient-text italic">Powered by pbTracker.</span>
+      </h2>
+
+      <p class="text-xl text-gray-400 max-w-2xl mx-auto leading-relaxed">
+        Your performance, tracked and optimized. <span class="text-white font-semibold">Win more games.</span>
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-8">
+
+      <div class="feature-card-3d">
+        <h3 class="text-2xl font-bold text-white mb-4">Live Rankings</h3>
+        <p class="text-gray-400">See exactly where you stand against other players.</p>
+      </div>
+
+      <div class="feature-card-3d">
+        <h3 class="text-2xl font-bold text-white mb-4">Performance Analytics</h3>
+        <p class="text-gray-400">Track win %, trends, and performance over time.</p>
+      </div>
+
+      <div class="feature-card-3d">
+        <h3 class="text-2xl font-bold text-white mb-4">Instant Insights</h3>
+        <p class="text-gray-400">Know what to improve and how to win more matches.</p>
+      </div>
+
+    </div>
+
   </div>
 
+</section>
   <button class="install-btn" onclick="showInstallGuide()">
     📲 Install App
   </button>
