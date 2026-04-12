@@ -1,11 +1,42 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbw4Najwv5fh84LSBnq3a3415zdQPME-dyBcwFdg1oyyj6vdjYGxEkvABs2HgUkx1qtE/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwyxeNQ2cG9nOtFjlUOkUI6rfnKFDdUUPjG3kCYZOvPm38s7M2Mg2NiGdoVy6eoFCp7/exec";
+const params = new URLSearchParams(window.location.search);
+
+if (params.get("reset") !== null) {
+  localStorage.removeItem("player");
+  localStorage.removeItem(LS_PLAYER_PREF);
+  location.href = window.location.pathname; // clean URL
+}
 
 function log(label, data) {
   console.log("🔥", label, data);
 }
+const activeTimers = new Set();
+
+function startTimer(name) {
+  if (activeTimers.has(name)) return;
+  activeTimers.add(name);
+  console.time(`⏱️ ${name}`);
+}
+
+function endTimer(name) {
+  if (!activeTimers.has(name)) return;
+  activeTimers.delete(name);
+  console.timeEnd(`⏱️ ${name}`);
+}
+
 
 let touchStartY = 0;
 let holdTimer;
+let optimisticUpdates = {};
+let globalData = {
+  sets: null,
+  trend: null,
+  schedule: null,
+  history: null,
+  lastUpdated: null
+};
+
+
 
 document.addEventListener("touchstart", e => {
   touchStartY = e.touches[0].clientY;
@@ -14,7 +45,7 @@ document.addEventListener("touchstart", e => {
 document.addEventListener("touchmove", e => {
   const y = e.touches[0].clientY;
 
-  if (y - touchStartY > 80) {
+  if (window.scrollY === 0 && y - touchStartY > 80) {
     if (!holdTimer) {
       holdTimer = setTimeout(() => {
         location.reload();
@@ -29,7 +60,7 @@ document.addEventListener("touchend", () => {
 });
 
 
-
+const memoryCache = {};
 let playersCache = [];
 let historyCache = [];
 let selectedPlayer = "max";
@@ -40,20 +71,62 @@ const LS_DAY_COMPLETE = "pbTracker_dayComplete";
 const LS_PLAYER_PREF = "pbTracker_playerPref_v1";
 const LS_MORNING_WINPCT = "pbTracker_morningWinPct";
 
+function getAllData() {
+  return {
+    sets: getTodaySets(),
+    trend: getUserTrend(),
+    schedule: getSchedule(),
+    history: getHistory(),
+    lastUpdated: getLastUpdated()
+  };
+}
 
+async function loadAllData(force = false) {
+  startTimer("Full App Load");
+
+  // 🔥 RUN EVERYTHING AT ONCE (NOT ONE BY ONE)
+  const [
+    sets,
+    trend,
+    schedule,
+    history,
+    lastUpdated
+  ] = await Promise.all([
+    callAPI({ action: "getTodaySets" }, { force }),
+    callAPI({ action: "getUserTrend" }, { force }),
+    callAPI({ action: "getSchedule" }, { force }),
+    callAPI({ action: "getHistory" }, { force }),
+    callAPI({ action: "lastUpdated" }, { force })
+  ]);
+
+  globalData = {
+    sets,
+    trend,
+    schedule,
+    history,
+    lastUpdated
+  };
+
+  endTimer("Full App Load");
+
+  return globalData;
+}
 
 const player =
   getPlayerFromURL() ||
   localStorage.getItem("player");
 
-document.getElementById("greetingText").innerText =
+document.getElementById("dashboardGreeting").innerText =
   getGreeting(player);
 
 const urlPlayer = getPlayerFromURL();
 const storedPlayer = localStorage.getItem("player");
 
 if (!urlPlayer && !storedPlayer) {
-  document.getElementById("namePrompt").style.display = "block";
+  const prompt = document.getElementById("namePrompt");
+  if (prompt) {
+    prompt.style.display = "block";
+  }
 }
 
 
@@ -64,6 +137,7 @@ function getGreeting(name) {
 
   return name ? `${greeting} ${capitalize(name)}.` : greeting;
 }
+
 function saveName() {
   const name = document.getElementById("nameInput").value.toLowerCase();
   if (!name) return;
@@ -154,9 +228,17 @@ function showPage(id) {
   document.getElementById("sideMenu").classList.remove("open");
   document.getElementById("overlay").classList.remove("show");
 
-  if (id === "rankings") loadRankings();
-  if (id === "schedule") loadSchedule();
-  if (id === "input" || id === "sets") loadTodaySetsAll();
+  if (id === "rankings") {
+    requestAnimationFrame(() => loadRankings());
+  }
+
+  if (id === "schedule") {
+    requestAnimationFrame(() => loadSchedule());
+  }
+
+  if (id === "input" || id === "sets") {
+    requestAnimationFrame(() => loadTodaySetsAll());
+  }
 }
 
 
@@ -167,18 +249,38 @@ function formatNames(str) {
     .join(" & ");
 }
 
-async function callAPI(params) {
+async function callAPI(params, options = {}) {
   try {
+    // 🔥 1. CREATE CACHE KEY
+    const key = JSON.stringify(params);
+
+    // 🔥 2. CHECK MEMORY CACHE (THIS IS WHERE YOUR LINE GOES)
+    if (memoryCache[key] && !options.force) {
+      return memoryCache[key];
+    }
+
+    // 🔥 3. FETCH FROM API
     const query = new URLSearchParams(params).toString();
-    const res = await fetch(`${API_URL}?${query}`);
+    const res = await fetch(`${API_URL}?${query}`, {
+      cache: "no-store"
+    });
+
     const text = await res.text();
 
+    let data;
+
     try {
-      return JSON.parse(text);
+      data = JSON.parse(text);
     } catch {
       console.error("INVALID JSON:", text);
       return null;
     }
+
+    // 🔥 4. SAVE TO MEMORY CACHE (THIS WAS BROKEN BEFORE)
+    memoryCache[key] = data;
+
+    return data;
+
   } catch (err) {
     console.error("API ERROR:", err);
     return null;
@@ -190,10 +292,17 @@ function renderSetsInto(container, data, opts = {}) {
   const locked = opts.locked === true || isDayComplete();
   container.innerHTML = "";
 
-  if (!data || !Array.isArray(data)) {
-    container.innerHTML = "No matches found";
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    container.innerHTML = `
+      <div class="card no-sets-card">
+        <div style="text-align:center;">
+          <h1>No sets today.</h1>
+        </div>
+      </div>
+    `;
     return;
   }
+
 
   data.forEach(match => {
     const setWrapper = document.createElement("div");
@@ -209,7 +318,8 @@ function renderSetsInto(container, data, opts = {}) {
     const games = ["G1", "G2", "G3"];
 
     games.forEach((g, i) => {
-      const score = match.scores?.[i] || "0-0";
+      const key = `${match.set}-${i}`;
+      const score = optimisticUpdates[key] || match.scores?.[i] || "0-0";
       let a = 0, b = 0;
 
       const game1 = match.scores?.[0] || "";
@@ -236,6 +346,9 @@ function renderSetsInto(container, data, opts = {}) {
       let result = "tie";
       if (Number(a) > Number(b)) result = "win";
       else if (Number(b) > Number(a)) result = "loss";
+
+
+
 
       const inputDisabled = locked || isGame3Locked;
 
@@ -287,7 +400,12 @@ function renderSetsInto(container, data, opts = {}) {
 }
 
 async function loadTodaySetsAll() {
-  const data = await callAPI({ action: "getTodaySets" });
+  startTimer("Current Sets");
+
+  if (!globalData.sets) await loadAllData();
+  const data = globalData.sets;
+
+  endTimer("Current Sets");
   log("SETS DATA", data);
   lastTodaySetsData = data;
   const locked = isDayComplete();
@@ -304,7 +422,9 @@ function updateDoneUiVisibility() {
   const done = isDayComplete();
   const btn = document.getElementById("doneBtn");
   const rev = document.getElementById("revertDayBtn");
-  if (btn) btn.style.display = done ? "none" : "block";
+  const hasSets = Array.isArray(lastTodaySetsData) && lastTodaySetsData.length > 0;
+
+  if (btn) btn.style.display = (!done && hasSets) ? "block" : "none";
   if (rev) rev.style.display = done ? "block" : "none";
 }
 
@@ -462,7 +582,7 @@ function toggleCheck(btn, date, col) {
     callAPI({
       action: "updatePlayerStatus",
       date,
-      col,
+      col: col + 1,
       status: 1
     }).then(() => {
       loadSchedule(); // 🔥 FORCE REFRESH FROM SERVER
@@ -531,11 +651,21 @@ async function submitNewPlayer() {
 }
 
 
+function isNewWeek() {
+  const today = new Date();
+  return today.getDay() === 6; // Saturday
+}
+
 async function loadSchedule() {
+  startTimer("Schedule");
   setWeekRange();
   console.log("🚀 loadSchedule called");
+  if (isNewWeek()) {
+    await callAPI({ action: "resetWeek" });
+  }
 
-  const data = await callAPI({ action: "getSchedule" });
+  if (!globalData.schedule) await loadAllData();
+  const data = globalData.schedule;
   console.log("📦 schedule data:", data);
 
   if (!data || !Array.isArray(data)) {
@@ -547,8 +677,16 @@ async function loadSchedule() {
 
   console.log("📊 SCHEDULE LENGTH:", data.length);
 
+  // FIRST — log rows
   data.forEach((row, i) => {
     console.log(`Row ${i}:`, row.date, row.players);
+  });
+
+  // SECOND — fix empty players
+  data.forEach(row => {
+    if (!row.players || row.players.length === 0) {
+      row.players = ["", "", "", ""];
+    }
   });
 
 
@@ -651,6 +789,7 @@ async function loadSchedule() {
       </div>
     `;
   }).join("");
+  endTimer("Schedule");
 }
 
 function showSuccess(id) {
@@ -695,7 +834,9 @@ function getPlayerFromURL() {
 }
 
 async function loadRankings() {
-  const data = await callAPI({ action: "getUserTrend" });
+  startTimer("Rankings Graph + Leaderboard");
+  if (!globalData.trend) await loadAllData();
+  const data = globalData.trend;
   if (!data || !data.length) return;
 
   getMorningWinPctSnapshot(data);
@@ -727,10 +868,12 @@ async function loadRankings() {
   }
 
   if (!historyCache.length) {
-    historyCache = await callAPI({ action: "getHistory" });
+    if (!globalData.history) await loadAllData();
+    historyCache = globalData.history;
   }
-
-  await renderDashboardAnalytics(selectedPlayer);
+  startTimer("Analytics");
+  renderDashboardAnalytics(selectedPlayer);
+  endTimer("Analytics");
 
   const rank = sorted.findIndex(p => p.name === player.name) + 1;
   document.getElementById("topPercent").innerText =
@@ -792,6 +935,7 @@ async function loadRankings() {
   ).sort((a, b) => b.winPct - a.winPct);
 
   renderLeaderboard(filtered);
+  endTimer("Rankings Graph + Leaderboard");
 }
 
 function formatWinPctDisplay(winPct) {
@@ -807,7 +951,22 @@ async function onRankingsPlayerChange() {
   await loadRankings();
 }
 
+async function ultraSmartRefresh() {
+  if (document.visibilityState !== "visible") return;
 
+  const meta = await callAPI({ action: "lastUpdated" });
+
+  if (!meta || meta === globalData.lastUpdated) return;
+
+  console.log("⚡ Updating FULL DATA (batch)");
+
+  await loadAllData(true);
+
+  // re-render EVERYTHING from cache
+  loadTodaySetsAll();
+  loadRankings();
+  loadSchedule();
+}
 
 function unlockPlayer(btn, date, col) {
   const slot = btn.parentElement;
@@ -843,11 +1002,14 @@ let currentPage = 0;
 
 
 function renderLeaderboard(data) {
-  data.sort((a,b) => b.winPct - a.winPct); // 🔥 ADD THIS LINE
-  const container = document.getElementById("leaderboard");
+  if (!data || !Array.isArray(data)) return;
 
-  container.innerHTML = `
-    <div class="leaderboard">
+
+  const container = document.getElementById("leaderboard");
+  if (!container) return;
+
+  const html = `
+    <div class="leaderboard fade-in">
       <div class="leaderboard-header">
         <span>Rank</span>
         <span>Player</span>
@@ -856,7 +1018,7 @@ function renderLeaderboard(data) {
       </div>
 
       ${data.map((p, i) => `
-        <div class="leaderboard-row ${p.name.toLowerCase() === selectedPlayer ? "you" : ""}">
+        <div class="leaderboard-row ${p.name?.toLowerCase() === selectedPlayer ? "you" : ""}">
           <span>${i + 1}</span>
           <span>${capitalize(p.name)}</span>
           <span>${formatWinPctDisplay(p.winPct)}</span>
@@ -865,6 +1027,18 @@ function renderLeaderboard(data) {
       `).join("")}
     </div>
   `;
+
+  // 🔥 SMART RENDER (NO RE-RENDER IF SAME)
+  if (container.dataset.last === html) return;
+  container.dataset.last = html;
+
+  // 🔥 SMOOTH TRANSITION
+  container.style.opacity = "0";
+
+  setTimeout(() => {
+    container.innerHTML = html;
+    container.style.opacity = "1";
+  }, 100);
 }
 
 async function getHistory() {
@@ -1040,7 +1214,7 @@ async function finishDay() {
   const shareId = generateShareId();
   localStorage.setItem("results_" + shareId, JSON.stringify(final));
 
-  const shareUrl = `${window.location.origin}${window.location.pathname}?share=${shareId}`;
+  const shareUrl = `${window.location.origin}/share/?r=${shareId}`;
 
   showShareButton(shareUrl);
 
@@ -1200,7 +1374,7 @@ function toggleMenu() {
   document.getElementById("overlay").classList.toggle("show");
 }
 
-let scoreTimeout;
+
 
 function attachAutocomplete(input, date, col) {
   let dropdown = input.parentNode.querySelector(".autocomplete");
@@ -1268,6 +1442,8 @@ function setWeekRange() {
 
 
 
+let scoreTimeout;
+
 function updateScore(set, gameIndex, input) {
   if (isDayComplete()) return;
 
@@ -1279,10 +1455,12 @@ function updateScore(set, gameIndex, input) {
   if (inputs.length < 2) return;
 
   scoreTimeout = setTimeout(() => {
-    const score = `${inputs[0].value}-${inputs[1].value}`;
-    const a = Number(inputs[0].value);
-    const b = Number(inputs[1].value);
+    const a = Number(inputs[0].value || 0);
+    const b = Number(inputs[1].value || 0);
 
+    const score = `${a}-${b}`;
+
+    // 🔥 HANDLE EMPTY SCORE
     if (a === 0 && b === 0) {
       callAPI({
         action: "submitScore",
@@ -1292,8 +1470,10 @@ function updateScore(set, gameIndex, input) {
       });
       return;
     }
+
     input.blur();
 
+    // 🔥 DETERMINE RESULT
     let result = "tie";
     if (a > b) result = "win";
     else if (b > a) result = "loss";
@@ -1302,10 +1482,24 @@ function updateScore(set, gameIndex, input) {
     if (!card) return;
 
     const badge = card.querySelector(".status-badge");
-    if (!badge) return;
+    if (badge) {
+      badge.className = `status-badge ${result}`;
+      badge.innerText = result;
+    }
 
-    badge.className = `status-badge ${result}`;
-    badge.innerText = result;
+    // 🔥 OPTIMISTIC UPDATE (NEW)
+    if (globalData.sets) {
+      const match = globalData.sets.find(m => m.set == set);
+      if (match) {
+        match.scores[gameIndex] = score;
+      }
+    }
+
+    const key = `${set}-${gameIndex}`;
+    optimisticUpdates[key] = score;
+
+    // 🔥 VISUAL FEEDBACK
+    card.classList.add("saving");
 
     console.log("📤 Sending score:", {
       set,
@@ -1313,17 +1507,41 @@ function updateScore(set, gameIndex, input) {
       score
     });
 
+    // 🔥 API CALL (UNCHANGED BUT IMPROVED)
     callAPI({
       action: "submitScore",
       set,
       game: gameIndex + 1,
       score
-    }).then(res => {
+    }, { force: true })
+    .then(res => {
       console.log("✅ API RESPONSE:", res);
+
+      card.classList.remove("saving");
+      delete optimisticUpdates[key];
+
+      showSuccess(`status-${set}-${gameIndex}`);
+
+      // 🔥 INSTANT RANKINGS UPDATE
+      setTimeout(() => loadRankings(), 200);
+    })
+    .catch(() => {
+      console.log("❌ Failed — reverting");
+
+      card.classList.remove("saving");
+
+      // revert cache
+      if (globalData.sets) {
+        const match = globalData.sets.find(m => m.set == set);
+        if (match) {
+          match.scores[gameIndex] = "0-0";
+        }
+      }
+
+      loadTodaySetsAll();
     });
 
-    showSuccess(`status-${set}-${gameIndex}`);
-  }, 1000);
+  }, 600); // 🔥 slightly faster than 1000ms
 }
 
 async function getAllSets() {
@@ -1353,6 +1571,278 @@ function countGamesPlayedInSets(sets, player) {
   });
   return n;
 }
+
+
+
+
+function renderAnalyticsTable(title, columns, rows, highlightPlayer) {
+  return `
+    <div class="leaderboard">
+      <div class="leaderboard-header">
+        ${columns.map(c => `<span>${c}</span>`).join("")}
+      </div>
+
+      ${rows.map((r, i) => `
+        <div class="leaderboard-row ${r.name === highlightPlayer ? "you" : ""}">
+          ${Object.values(r).map(v => `<span>${v}</span>`).join("")}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function openBestPartner(player, stats) {
+  const p = stats[player];
+
+  const rows = Object.entries(p.partners)
+    .map(([name, d]) => ({
+      name: capitalize(player),
+      partner: capitalize(name),
+      win: formatWinPctDisplay(d.wins / d.games)
+    }))
+    .sort((a,b)=>parseFloat(b.win)-parseFloat(a.win))
+    .slice(0,10);
+
+  showAnalyticsModal(
+    "Best Partners",
+    ["Name","Best Partner","Win %"],
+    rows,
+    player
+  );
+}
+function openHardestOpponent(player, stats) {
+  const p = stats[player];
+
+  const rows = Object.entries(p.opponents)
+    .map(([name, d]) => ({
+      name: capitalize(player),
+      opponent: capitalize(name),
+      win: formatWinPctDisplay(d.wins / d.games)
+    }))
+    .sort((a,b)=>parseFloat(a.win)-parseFloat(b.win))
+    .slice(0,10);
+
+  showAnalyticsModal(
+    "Hardest Opponents",
+    ["Name","Opponent","Win %"],
+    rows,
+    player
+  );
+}
+function openLosingStreak(stats, selectedPlayer) {
+  const rows = Object.entries(stats)
+    .map(([name, d]) => ({
+      rank: "",
+      name: capitalize(name),
+      streak: d.maxLoseStreak
+    }))
+    .sort((a,b)=>b.streak-a.streak);
+
+  rows.forEach((r,i)=>r.rank = i+1);
+
+  showAnalyticsModal(
+    "Losing Streaks",
+    ["Rank","Name","Streak"],
+    rows,
+    selectedPlayer
+  );
+}
+function openGamesPlayed(stats, selectedPlayer) {
+  const totalGames = Object.values(stats).reduce((a,b)=>a+b.games,0);
+
+  const rows = Object.entries(stats)
+    .map(([name, d]) => ({
+      name: capitalize(name),
+      games: d.games,
+      pct: Math.round((d.games / totalGames) * 100) + "%"
+    }))
+    .sort((a,b)=>b.games-a.games);
+
+  showAnalyticsModal(
+    "Games Played",
+    ["Name","Games","%"],
+    rows,
+    selectedPlayer
+  );
+}
+function openBestDay(player, stats) {
+  const days = stats[player].dailyWins;
+
+  const best = Object.entries(days)
+    .sort((a,b)=>b[1]-a[1])[0];
+
+  alert(`Best Day: ${best?.[0]} (${best?.[1]} wins)`);
+}
+
+
+
+
+function renderReverseTables(selectedPlayer, stats) {
+  const bestWithMe = [];
+  const hardestAgainstMe = [];
+
+  Object.entries(stats).forEach(([name, d]) => {
+    if (name === selectedPlayer) return;
+
+    if (d.partners[selectedPlayer]) {
+      const p = d.partners[selectedPlayer];
+      bestWithMe.push({
+        name: capitalize(name),
+        val: formatWinPctDisplay(p.wins / p.games)
+      });
+    }
+
+    if (d.opponents[selectedPlayer]) {
+      const o = d.opponents[selectedPlayer];
+      hardestAgainstMe.push({
+        name: capitalize(name),
+        val: formatWinPctDisplay(o.wins / o.games)
+      });
+    }
+  });
+
+  document.getElementById("rankingsAnalytics").innerHTML = `
+    <h3>Best With Me</h3>
+    ${renderMiniTable(bestWithMe)}
+
+    <h3>Hardest Against Me</h3>
+    ${renderMiniTable(hardestAgainstMe)}
+  `;
+}
+
+
+
+
+
+
+
+function buildPlayerStats(history) {
+  const stats = {};
+
+  function init(p) {
+    if (!stats[p]) {
+      stats[p] = {
+        games: 0,
+        wins: 0,
+        partners: {},
+        opponents: {},
+        currentLoseStreak: 0,
+        maxLoseStreak: 0,
+        dailyWins: {}
+      };
+    }
+  }
+
+  history.forEach(match => {
+    const teamA = match.teamA.split("/").map(p => p.trim().toLowerCase());
+    const teamB = match.teamB.split("/").map(p => p.trim().toLowerCase());
+
+    const date = match.date;
+
+    match.scores.forEach(score => {
+      if (!score || !score.includes("-")) return;
+
+      const [a, b] = score.split("-").map(Number);
+      if (isNaN(a) || isNaN(b)) return;
+
+      const aWin = a > b;
+      const bWin = b > a;
+
+      [...teamA, ...teamB].forEach(init);
+
+      // TEAM A
+      teamA.forEach(p => {
+        stats[p].games++;
+
+        if (aWin) {
+          stats[p].wins++;
+          stats[p].currentLoseStreak = 0;
+        } else {
+          stats[p].currentLoseStreak++;
+          stats[p].maxLoseStreak = Math.max(
+            stats[p].maxLoseStreak,
+            stats[p].currentLoseStreak
+          );
+        }
+
+        stats[p].dailyWins[date] = (stats[p].dailyWins[date] || 0) + (aWin ? 1 : 0);
+
+        teamA.forEach(partner => {
+          if (partner !== p) {
+            const key = partner;
+            if (!stats[p].partners[key]) stats[p].partners[key] = { wins: 0, games: 0 };
+            stats[p].partners[key].games++;
+            if (aWin) stats[p].partners[key].wins++;
+          }
+        });
+
+        teamB.forEach(opp => {
+          if (!stats[p].opponents[opp]) stats[p].opponents[opp] = { wins: 0, games: 0 };
+          stats[p].opponents[opp].games++;
+          if (aWin) stats[p].opponents[opp].wins++;
+        });
+      });
+
+      // TEAM B
+      teamB.forEach(p => {
+        stats[p].games++;
+
+        if (bWin) {
+          stats[p].wins++;
+          stats[p].currentLoseStreak = 0;
+        } else {
+          stats[p].currentLoseStreak++;
+          stats[p].maxLoseStreak = Math.max(
+            stats[p].maxLoseStreak,
+            stats[p].currentLoseStreak
+          );
+        }
+
+        stats[p].dailyWins[date] = (stats[p].dailyWins[date] || 0) + (bWin ? 1 : 0);
+
+        teamB.forEach(partner => {
+          if (partner !== p) {
+            if (!stats[p].partners[partner]) stats[p].partners[partner] = { wins: 0, games: 0 };
+            stats[p].partners[partner].games++;
+            if (bWin) stats[p].partners[partner].wins++;
+          }
+        });
+
+        teamA.forEach(opp => {
+          if (!stats[p].opponents[opp]) stats[p].opponents[opp] = { wins: 0, games: 0 };
+          stats[p].opponents[opp].games++;
+          if (bWin) stats[p].opponents[opp].wins++;
+        });
+      });
+    });
+  });
+
+  return stats;
+}
+
+
+
+function showAnalyticsModal(title, columns, rows, selectedPlayer) {
+  const container = document.getElementById("analytics");
+
+  container.innerHTML = `
+    <h3 style="margin-bottom:10px;">${title}</h3>
+    <div class="leaderboard">
+      <div class="leaderboard-header">
+        ${columns.map(c => `<span>${c}</span>`).join("")}
+      </div>
+
+      ${rows.map(r => `
+        <div class="leaderboard-row ${r.name === selectedPlayer ? "you" : ""}">
+          ${Object.values(r).map(v => `<span>${v}</span>`).join("")}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+
+
 
 function getBestPartner(sets, player) {
   const map = {};
@@ -1679,6 +2169,24 @@ function navigate(page) {
   showPage(page);
 }
 
+(async () => {
+  try {
+    // 🔥 1. INSTANT UI (no waiting)
+    loadTodaySetsAll();
+    loadRankings();
+
+    // 🔥 2. LOAD DATA IN BACKGROUND
+    await loadAllData(true);
+
+    // 🔥 3. RE-RENDER WITH REAL DATA
+    loadTodaySetsAll();
+    loadRankings();
+
+  } catch (err) {
+    console.error("LOAD FAILED", err);
+  }
+})();
+
 document.addEventListener("DOMContentLoaded", async () => {
   const loadedShared = loadSharedResults();
 
@@ -1702,3 +2210,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("LOAD FAILED", err);
   }
 });
+
+async function preloadData() {
+  callAPI({ action: "getUserTrend" });
+  callAPI({ action: "getTodaySets" });
+  callAPI({ action: "getSchedule" });
+}
+
+
+
+window.addEventListener("load", () => {
+  const loader = document.getElementById("loading-screen");
+  if (loader) {
+    loader.style.animation = "fadeOut 0.4s ease forwards";
+
+    setTimeout(() => {
+      loader.style.display = "none";
+    }, 400);
+  }
+});
+
+function navigate(id) {
+  showPage(id);
+}
+
+preloadData();
+
+setInterval(ultraSmartRefresh, 4000);

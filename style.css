@@ -86,6 +86,19 @@ h1, h2 {
   padding: 0 4px;
 }
 
+
+#dashboardAnalytics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.analytics-stat {
+  padding: 8px;
+  font-size: 12px;
+}
+
+
 .section-heading-dashboard {
   font-size: 0.95rem;
   color: #9ca3af;
@@ -120,10 +133,12 @@ h1, h2 {
 }
 
 .analytics-card-outer {
-  width: calc(100vw - 24px);
+  width: calc(100vw - 40px);
   max-width: calc(100vw - 24px);
-  margin-left: calc(50% - 50vw + 12px);
-  margin-right: calc(50% - 50vw + 12px);
+  margin-left: calc(50% - 50vw + 25px);
+  margin-right: calc(50% - 50vw + 22px);
+  margin-top: 12px;
+  transform: translateX(-6px);
   box-sizing: border-box;
   padding-left: 12px;
   padding-right: 12px;
@@ -139,7 +154,14 @@ h1, h2 {
 /* =========================
    PAGE SYSTEM (ADDED)
 ========================= */
-
+.no-sets-card {
+  text-align: center;
+  padding: 40px 20px;
+  font-size: 20px;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(12px);
+  border-radius: 20px;
+}
 .page {
   display: none;
   transition: opacity 0.25s ease;
@@ -182,7 +204,7 @@ h1, h2 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  transition: background 0.2s;
+  transition: all 0.2s ease;
 }
 
 .match-card:hover {
@@ -330,7 +352,7 @@ h1, h2 {
 }
 
 .leaderboard-row.you {
-  background: rgba(0,200,83,0.2);
+  background: rgba(54,162,235,0.25);
   border-radius: 8px;
 }
 
@@ -461,7 +483,7 @@ h1, h2 {
 
   white-space: nowrap;
   transform: translateY(2px);
-  margin-left: 220px; /* 🔥 nudges it right slightly */
+  margin-left: 220px; /* 🔥 nudges it right alot */
 }
 
 .autocomplete {
@@ -602,6 +624,12 @@ h1, h2 {
   border-radius: 20px;
   padding: 20px;
   margin-bottom: 15px;
+}
+
+
+#doneBtn {
+  background: #0a1a2f;
+  color: white;
 }
 
 button {
@@ -876,7 +904,7 @@ select.dash-player-select option,
 #bigStat {
   font-size: 40px;
   font-weight: 700;
-  color: #00c853;
+  color: #36a2eb;
 }
 
 /* =========================
@@ -959,6 +987,10 @@ select.dash-player-select option,
   100% { transform: translateY(0); opacity: 1; }
 }
 
+
+#leaderboard {
+  transition: opacity 0.15s ease;
+}
 /* =========================
    DARK MODE
 ========================= */
@@ -1032,13 +1064,16 @@ select.dash-player-select option,
   font-size: 18px;
   margin-bottom: 10px;
 }
+
 .analytics-main {
   background: rgba(20,20,20,0.9);
+  margin-left: calc(50% - 50vw + 25px);
+  margin-right: calc(50% - 50vw + 22px);
   padding: 15px;
   border-radius: 16px;
   margin-bottom: 20px;
+  margin-top: 20px;
 }
-
 .analytics-main,
 .analytics-card {
   width: 100%;
@@ -1071,7 +1106,7 @@ select.dash-player-select option,
 }
 
 .analytics-header {
-  margin-bottom: 0px; /* 🔥 BIGGER GAP ABOVE STATS */
+  margin-bottom: 10px; /* 🔥 BIGGER GAP ABOVE STATS */
   margin-top: 8px; /* 🔥 BIGGER GAP ABOVE STATS */
 }
 
@@ -1288,6 +1323,11 @@ select.dash-player-select option,
 .match-card.day-locked-card .score-editable input:disabled {
   opacity: 0.55;
 }
+.match-card.saving {
+  opacity: 0.6;
+  transform: scale(0.98);
+  transition: all 0.2s ease;
+}
 
 .analytics-card.green { border-left: 4px solid #00c853; }
 .analytics-card.red { border-left: 4px solid #ff3b30; }
@@ -1332,4 +1372,25 @@ select.dash-player-select option,
 .enter-btn {
   background: transparent;
   border: 1px solid #555;
+}
+
+
+
+/* dsktop */
+@media (min-width: 768px) {
+  .analytics-card-outer {
+    max-width: 600px;
+    margin: auto;
+  }
+}
+
+
+
+.fade-in {
+  animation: fadeInSoft 0.3s ease;
+}
+
+@keyframes fadeInSoft {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
