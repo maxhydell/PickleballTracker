@@ -8,6 +8,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Pickleball Tracker</title>
 
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Open+Sans:ital,wght@0,700;1,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -51,21 +54,32 @@
     <button onclick="navigate('input')">🏠 Dashboard</button>
     <button onclick="navigate('rankings')">📊 Rankings</button>
     <button onclick="navigate('schedule')">📅 Schedule</button>
-    <button onclick="navigate('input')">🎾 Sets</button>
+    <button onclick="navigate('sets')">🎾 Sets</button>
   </div>
 
   <!-- PAGES -->
 <div id="input" class="page active">
-    <h1>Today's Matches</h1>
-    <div class="card">
-     <div id="dashboardAnalytics" class="analytics-grid"></div>
+    <h2 id="greetingText"></h2>
+    <div id="namePrompt" class="name-prompt" style="display:none;">
+      Please provide your name for a more tailored experience.
+      <input id="nameInput" placeholder="Enter your name">
+      <button onclick="saveName()">Save</button>
+    </div>
+    <div id="dashboardGreeting" class="dashboard-greeting"></div>
+    <div id="playerOnboard" class="player-onboard" style="display:none;"></div>
+
+    <div class="card analytics-card-outer">
+     <div id="dashboardAnalytics"></div>
     </div>
 
+    <h2 class="section-heading-dashboard">Today's sets</h2>
     <div id="setsContainer"></div>
 
-    <div class="card">
-      <button onclick="finishDay()">DONE</button>
+    <div class="card" id="doneCard">
+      <button type="button" id="doneBtn" onclick="finishDay()">DONE</button>
+      <div id="dayResults" class="day-results" style="display:none;"></div>
       <div id="dayStats"></div>
+      <button type="button" id="revertDayBtn" class="revert-day-btn" style="display:none;" onclick="revertDay()">Revert day</button>
     </div>
   </div>
 
@@ -80,7 +94,7 @@
               <span class="label-text font-medium">Player</span>
             </label>
             <div class="block">
-              <select id="playerSelect" class="select select-bordered" onchange="loadRankings()"></select>
+              <select id="playerSelect" class="select select-bordered" onchange="onRankingsPlayerChange()"></select>
             </div>
           </div>
         </div>
