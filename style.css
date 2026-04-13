@@ -94,11 +94,14 @@ h1, h2 {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
+  width: 100%;
+  justify-content: center;
 }
 
 .analytics-stat {
   padding: 8px;
   font-size: 12px;
+  text-align: center;
 }
 
 

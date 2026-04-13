@@ -915,7 +915,7 @@ async function loadSchedule() {
                     value="${row.players?.[col] ? capitalize(row.players[col]) : ""}"
                     ${status !== 0 ? "disabled" : ""}
                     ${status == 2 ? `style="border:2px solid #00c853"` : ""}
-                    onfocus="attachAutocomplete(this, '${row.date}', ${col+1})">
+                    onfocus="pauseScheduleRefresh(); attachAutocomplete(this, '${row.date}', ${col+1})">
 
                   ${status == 2 ? `
                     <img src="unlock.png" class="sms-btn"
@@ -955,7 +955,9 @@ function showSuccess(id) {
   setTimeout(() => el.innerHTML = "", 1500);
 }
 
-
+function pauseScheduleRefresh() {
+  scheduleRefreshPausedUntil = Date.now() + 5000;
+}
 
 async function loadData() {
   // rankings
@@ -1402,7 +1404,13 @@ async function finishDay() {
     after || []
   ));
 
-  const shareUrl = `${window.location.origin}/pbTracker/share/?r=${shareId}`;
+  const shareUrl = `${getSiteBasePath()}share/?r=${shareId}`;
+
+  const el = document.getElementById("dayResults");
+  if (el) {
+    el.innerHTML = localStorage.getItem(`pbTracker_results_${todayKey()}`);
+    el.style.display = "block";
+  }
 
   showShareButton(shareUrl);
 
@@ -1513,6 +1521,11 @@ async function revertDay() {
   updateDoneUiVisibility();
   await loadTodaySetsAll();
   await loadRankings();
+
+  chart?.destroy();
+  chart = null;
+
+  loadRankings();
 }
 
 
