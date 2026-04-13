@@ -365,13 +365,13 @@ function showInstallGuide() {
 
   if (iOS) {
     steps = [
-      "Use **Safari** for the smoothest install (other browsers on iPhone hide some options).",
-      "Tap the **Share** button—the square with an arrow—on the bottom bar.",
-      "Scroll and tap **Add to Home Screen**.",
+      "Click the **3 dots ⋮** (bottom right) next to the search bar on safari.",
+      "Tap the **Share** button—the square.",
+      "Tap view more **(⌄)** then scroll to the **+ add to home screen**. ",
       "Tap **Add** to finish. Your pbTracker icon appears on your home screen.",
     ];
     note =
-      "Tip: launch pbTracker from that icon for a full-screen app experience without the Safari chrome.";
+      "Un-Installable at any time.";
   } else if (android) {
     steps = [
       "Open the browser **⋮** menu in the top-right corner.",
