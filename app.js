@@ -1,5 +1,7 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbxK3A8M-NZG6gl0Tm5gJ_tkDdJbWqtBUUEUhWdT6AyxyrvapDm8x8XGmU9DD4aH1A9T/exec";
 
+window.loadedShared = false;
+
 function log(label, data) {
   console.log("🔥", label, data);
 }
@@ -70,15 +72,12 @@ const LS_SCHEDULE_WEEK_ANCHOR = "pbTracker_scheduleWeekAnchor_v1";
 
 
 function getRoutePage() {
-  const path = window.location.pathname.toLowerCase();
-  const routeParam = new URLSearchParams(window.location.search).get("route");
-  if (["input", "rankings", "schedule", "sets"].includes(String(routeParam || "").toLowerCase())) {
-    return String(routeParam).toLowerCase();
-  }
+  const params = new URLSearchParams(window.location.search);
+  const page = params.get("page");
 
-  if (path.includes("/rankings")) return "rankings";
-  if (path.includes("/schedule")) return "schedule";
-  if (path.includes("/sets")) return "sets";
+  if (["input", "rankings", "schedule", "sets"].includes(page)) {
+    return page;
+  }
 
   return "input";
 }
@@ -2544,24 +2543,42 @@ function attachOnboardAutocomplete(input) {
 }
 
 function navigate(page) {
-  const base = "/pbTracker";
-  const params = new URLSearchParams(window.location.search);
-  const player = params.get("p");
+  const base = "/pbTracker/";
+  const url = new URL(window.location.origin + base);
 
-  let path = page === "input" ? `${base}/` : `${base}/${page}/`;
-  if (player) path += `?p=${encodeURIComponent(player)}`;
+  const currentParams = new URLSearchParams(window.location.search);
+  const player = currentParams.get("p");
 
-  window.history.pushState({}, "", path);
+  // keep player param
+  if (player) {
+    url.searchParams.set("p", player);
+  }
+
+  // handle page param
+  if (page !== "input") {
+    url.searchParams.set("page", page);
+  }
+
+  window.history.pushState({}, "", url);
   showPage(page);
 }
 
 function goTo(page) {
   const params = new URLSearchParams(window.location.search);
   const player = params.get("p");
-  const suffix = player ? `?p=${encodeURIComponent(player)}` : "";
-  window.location.href = page === "input" ? `/pbTracker/${suffix}` : `/pbTracker/${page}/${suffix}`;
-}
 
+  const url = new URL(window.location.origin + "/pbTracker/");
+
+  if (player) {
+    url.searchParams.set("p", player);
+  }
+
+  if (page !== "input") {
+    url.searchParams.set("page", page);
+  }
+
+  window.location.href = url.toString();
+}
 window.addEventListener("popstate", () => {
   showPage(getRoutePage());
 });
@@ -2619,7 +2636,21 @@ async function preloadData() {
 
 
 
-window.addEventListener("load", () => {
+window.addEventListener("load", async () => {
+  console.log("🚀 App starting");
+
+  // 🔥 START APP FIRST
+  try {
+    await loadAllData();
+    showPage(getInitialPageFromPath());
+  } catch (e) {
+    console.error("Startup crash:", e);
+  }
+
+  // 🔁 auto refresh
+  setInterval(ultraSmartRefresh, 5000);
+
+  // 🎬 THEN hide loader
   const loader = document.getElementById("loading-screen");
   if (loader) {
     loader.style.animation = "fadeOut 0.4s ease forwards";
