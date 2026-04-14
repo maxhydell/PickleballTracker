@@ -55,11 +55,14 @@ h1, h2 {
 .set-header {
   display: flex;
   justify-content: space-between;
+  align-items: center; /* 🔥 THIS FIXES HEIGHT */
   cursor: pointer;
+  gap: 8px;
 }
 
 .carrot {
   transition: transform 0.2s;
+  transform: translateY(-2px);
 }
 
 .set-header.active .carrot {
@@ -305,11 +308,16 @@ h1, h2 {
   border: none;
   border-radius: 8px;
 
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
+  width: 328px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
-  padding: 6px 10px;
-  height: 26px;
+
+  padding: 4px 4px;
+  height: 22px;
 
   cursor: pointer;
 }
