@@ -1,7 +1,7 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbxK3A8M-NZG6gl0Tm5gJ_tkDdJbWqtBUUEUhWdT6AyxyrvapDm8x8XGmU9DD4aH1A9T/exec";
 
 window.loadedShared = false;
-
+let lastMetaSeen = null;
 function log(label, data) {
   console.log("🔥", label, data);
 }
@@ -1160,7 +1160,7 @@ async function ultraSmartRefresh() {
 
   console.log("⚡ Updating FULL DATA (batch)");
 
-  await loadAllData(true);
+  await loadAllData();
 
   loadTodaySetsAll();
   loadRankings();
