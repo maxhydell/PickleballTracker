@@ -515,7 +515,7 @@ async function saveSet(setNumber) {
   try {
     for (let i = 0; i < 3; i++) {
       const inputs = document.querySelectorAll(
-        `.match-card [oninput*="updateScore(${setNumber}, ${i}"] input`
+        `.match-card [oninput*="updateScore(${setNumber}, ${i})"] input`
       );
 
       if (!inputs.length) continue;
@@ -523,7 +523,7 @@ async function saveSet(setNumber) {
       const a = inputs[0].value;
       const b = inputs[1].value;
 
-      if (!a || !b) continue;
+      if (inputs[0].value === "" || inputs[1].value === "") continue;
 
       const score = `${a}-${b}`;
 
