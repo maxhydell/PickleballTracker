@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbxK3A8M-NZG6gl0Tm5gJ_tkDdJbWqtBUUEUhWdT6AyxyrvapDm8x8XGmU9DD4aH1A9T/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbyxCBrw-mPh_WRwS88dJv6IFvdAvi2h8Kfe6YZh0tGhGCk1WVA5f2PxqDtefKwqHr4MFg/exec";
 
 
 window.loadedShared = false;
@@ -2024,30 +2024,63 @@ function updateSaveButton() {
 
 
 async function saveScheduleChanges() {
-  if (!scheduleDirty || !pendingScheduleChanges.length) return;
+  if (!scheduleDirty) return;
 
-  const changes = [...pendingScheduleChanges];
+  console.log("💾 Saving FULL schedule");
 
-  console.log("💾 Saving schedule changes:", changes);
+  const days = {};
 
-  for (const change of changes) {
+  // 🔥 STEP 1: build full day state
+  pendingScheduleChanges.forEach(change => {
+    if (!days[change.date]) {
+      days[change.date] = {
+        names: ["", "", "", ""],
+        status: [0, 0, 0, 0]
+      };
+    }
+
     if (change.type === "name") {
-      await callAPI({
-        action: "updateSchedule",
-        date: change.date,
-        col: change.col,
-        name: change.name
-      });
+      days[change.date].names[change.col - 1] = change.name.toLowerCase();
     }
 
     if (change.type === "status") {
-      await callAPI({
-        action: "updateSchedule",
-        date: change.date,
-        col: change.col,
-        status: change.status
-      });
+      days[change.date].status[change.col - 1] = change.status;
     }
+  });
+
+  // 🔥 STEP 2: send structured data
+  for (const date in days) {
+    const d = new Date(date);
+
+    const dayNum = d.getDay() === 0 ? 7 : d.getDay();
+
+    const formattedDate = `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`;
+
+    const payload = {
+      action: "saveFullScheduleDay",
+
+      // A, B
+      date: formattedDate,
+      day: dayNum,
+
+      // C-F (players)
+      p1: days[date].names[0] || "",
+      p2: days[date].names[1] || "",
+      p3: days[date].names[2] || "",
+      p4: days[date].names[3] || "",
+
+      // G = spacer (do nothing)
+
+      // H-K (status)
+      s1: days[date].status[0] || 0,
+      s2: days[date].status[1] || 0,
+      s3: days[date].status[2] || 0,
+      s4: days[date].status[3] || 0
+    };
+
+    console.log("📤 sending:", payload);
+
+    await callAPI(payload);
   }
 
   pendingScheduleChanges = [];
@@ -2055,7 +2088,7 @@ async function saveScheduleChanges() {
 
   updateSaveButton();
 
-  console.log("✅ Schedule saved");
+  console.log("✅ Schedule saved to sheet");
 }
 
 

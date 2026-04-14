@@ -1446,11 +1446,10 @@ select.dash-player-select option,
 
 /* button for schedule save */
 #scheduleSaveWrap {
-  position: sticky;
-  bottom: 20px;
+  margin-top: 20px;
+  margin-bottom: 30px;
   display: flex;
   justify-content: center;
-  margin-top: 20px;
 }
 
 #scheduleSaveBtn {
@@ -1465,6 +1464,6 @@ select.dash-player-select option,
 }
 
 #scheduleSaveBtn.saved {
-  background: #00c853;
-  box-shadow: 0 0 15px rgba(0,200,83,0.6);
+  background: #1565c0; /* darker blue */
+  box-shadow: 0 4px 15px rgba(21,101,192,0.6);
 }
