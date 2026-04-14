@@ -31,7 +31,13 @@ let globalData = {
   lastUpdated: null
 };
 
+async function initApp() {
+  await loadAllData(); // 🔥 ONLY ONCE
+  loadSchedule();
+  loadTodaySetsAll();
+}
 
+initApp();
 
 document.addEventListener("touchstart", e => {
   touchStartY = e.touches[0].clientY;
@@ -635,13 +641,14 @@ function toggleCheck(btn, date, col) {
     btn.dataset.state = 1;
 
     callAPI({
-      action: "updatePlayerStatus",
+      action: "updateSchedule",
       date,
-      col: col + 1,
+      col,
       status: 1
-    }).then(() => {
-      loadSchedule(); // 🔥 FORCE REFRESH FROM SERVER
-    });
+    }).then(async () => {
+      await loadAllData(true);
+      loadTodaySetsAll();
+    });// 🔥 FORCE REFRESH FROM SERVER
     return; // 🔥 IMPORTANT
   }
 
@@ -657,8 +664,9 @@ function toggleCheck(btn, date, col) {
       date,
       col,
       status: 2
-    }).then(() => {
-      loadSchedule(); // 🔥 FORCE REFRESH FROM SERVER
+    }).then(async () => {
+      await loadAllData(true); // 🔥 refresh cache
+      loadSchedule();          // 🔥 single clean reload
     });
 
     setTimeout(() => {
@@ -792,159 +800,172 @@ function bookCourt(date, button) {
   // This preserves UI state and logs intent until a local listener/protocol is wired.
 }
 
+let scheduleLoading = false;
+
 async function loadSchedule() {
-  startTimer("Schedule");
-  setWeekRange();
-  maybeRollScheduleLocalWeek();
-  console.log("🚀 loadSchedule called");
+  if (scheduleLoading) return;
+  scheduleLoading = true;
 
-  if (!globalData.schedule) await loadAllData();
-  let data = globalData.schedule;
-  console.log("📦 schedule data:", data);
+  try {
+    const rankings = await callAPI({ action: "getUserTrend" });
 
-  if (!data || !Array.isArray(data)) {
-    console.error("❌ BAD SCHEDULE DATA:", data);
-    document.getElementById("scheduleList").innerHTML = "Failed to load schedule";
-    return;
-  }
+    startTimer("Schedule");
+    setWeekRange();
+    maybeRollScheduleLocalWeek();
+    console.log("🚀 loadSchedule called");
 
-  const weekStart = startOfDay(effectiveScheduleWeekMonday());
-  data = data.filter(row => {
-    const rd = startOfDay(new Date(row.date));
-    return !isNaN(rd.getTime()) && rd.getTime() >= weekStart.getTime();
-  });
+    let data = globalData.schedule;
+    console.log("📦 schedule data:", data);
+    console.count("loadSchedule fired");
 
-  console.log("📊 SCHEDULE LENGTH:", data.length);
-
-  // FIRST — log rows
-  data.forEach((row, i) => {
-    console.log(`Row ${i}:`, row.date, row.players);
-  });
-
-  // SECOND — fix empty players
-  data.forEach(row => {
-    if (!row.players || row.players.length === 0) {
-      row.players = ["", "", "", ""];
+    if (!data || !Array.isArray(data)) {
+      console.error("❌ BAD SCHEDULE DATA:", data);
+      document.getElementById("scheduleList").innerHTML = "Failed to load schedule";
+      return;
     }
-  });
 
+    const weekStart = startOfDay(effectiveScheduleWeekMonday());
 
-
-  const rankings = await callAPI({ action: "getUserTrend" });
-
-  function getWinPct(name) {
-    const p = rankings.find(x =>
-      x.name.toLowerCase() === (name || "").toLowerCase()
-    );
-    return p?.winPct || 0;
-  }
-
-  const container = document.getElementById("scheduleList");
-
-  if (!data.length) {
-    console.warn("⚠️ No schedule for this week");
-    data = Array.from({ length: 5 }, (_, i) => {
-      const d = new Date(weekStart);
-      d.setDate(weekStart.getDate() + i);
-      return {
-        date: d.toISOString(),
-        players: ["", "", "", ""],
-        status: [0, 0, 0, 0]
-      };
+    data = data.filter(row => {
+      const rd = startOfDay(new Date(row.date));
+      return !isNaN(rd.getTime()) && rd.getTime() >= weekStart.getTime();
     });
-  }
 
-  let topDayIndex = -1;
-  let bestAvg = 0;
+    console.log("📊 SCHEDULE LENGTH:", data.length);
 
-  data.forEach((row, i) => {
-    const vals = row.players
-      .map(p => getWinPct(p))
-      .filter(v => v > 0);
+    // FIRST — log rows
+    data.forEach((row, i) => {
+      console.log(`Row ${i}:`, row.date, row.players);
+    });
 
-    const avg = vals.length
-      ? vals.reduce((a, b) => a + b, 0) / vals.length
-      : 0;
+    // SECOND — fix empty players
+    data.forEach(row => {
+      if (!row.players || row.players.length === 0) {
+        row.players = ["", "", "", ""];
+      }
+    });
 
-    if (avg > bestAvg) {
-      bestAvg = avg;
-      topDayIndex = i;
+    function getWinPct(name) {
+      const p = rankings.find(x =>
+        x.name.toLowerCase() === (name || "").toLowerCase()
+      );
+      return p?.winPct || 0;
     }
-  });
 
-  container.innerHTML = data.map((row, i) => {
-    console.log("Row:", row);
-    const d = new Date(row.date);
-    const dayName = d.toLocaleDateString("en-US",{weekday:"long"});
+    const container = document.getElementById("scheduleList");
 
     if (!data.length) {
-      container.innerHTML = "No schedule found";
-      return "";
+      console.warn("⚠️ No schedule for this week");
+      data = Array.from({ length: 5 }, (_, i) => {
+        const d = new Date(weekStart);
+        d.setDate(weekStart.getDate() + i);
+        return {
+          date: d.toISOString(),
+          players: ["", "", "", ""],
+          status: [0, 0, 0, 0]
+        };
+      });
     }
 
-    const players = row.players
-      .filter(Boolean)
-      .map(p => p ? capitalize(p) : "")
-      .join(", ");
+    let topDayIndex = -1;
+    let bestAvg = 0;
 
-   
-    const allConfirmed = row.status && row.status.every(s => s == 2);
-    return `
-      <div class="day-card ${allConfirmed ? "day-complete" : ""}" data-date="${row.date}">
-        <div class="day-header" onclick="toggleSet(this)">
-          <div class="day-name">${dayName}</div>
+    data.forEach((row, i) => {
+      const vals = row.players
+        .map(p => getWinPct(p))
+        .filter(v => v > 0);
 
-          ${i === topDayIndex ? `<div class="tag">Top Day</div>` : ""}
+      const avg = vals.length
+        ? vals.reduce((a, b) => a + b, 0) / vals.length
+        : 0;
 
-          <div class="carrot"></div>
-        </div>
+      if (avg > bestAvg) {
+        bestAvg = avg;
+        topDayIndex = i;
+      }
+    });
 
-        <div class="day-body">
-          <div class="player-row">
-            ${[0,1,2,3].map(col => {
-              const status = row.status?.[col] || 0;
+    container.innerHTML = data.map((row, i) => {
+      console.log("Row:", row);
+      const d = new Date(row.date);
+      const dayName = d.toLocaleDateString("en-US",{weekday:"long"});
 
-              let img = "white.png";
-              if (status == 1) img = "orange.png";
-              if (status == 2) img = "green.png";
+      if (!data.length) {
+        container.innerHTML = "No schedule found";
+        return "";
+      }
 
-              return `
-                <div class="player-slot">
-                  <input class="player-input"
-                    value="${row.players?.[col] ? capitalize(row.players[col]) : ""}"
-                    ${status !== 0 ? "disabled" : ""}
-                    ${status == 2 ? `style="border:2px solid #00c853"` : ""}
-                    onfocus="pauseScheduleRefresh(); attachAutocomplete(this, '${row.date}', ${col+1})">
+      const players = row.players
+        .filter(Boolean)
+        .map(p => p ? capitalize(p) : "")
+        .join(", ");
 
-                  ${status == 2 ? `
-                    <img src="unlock.png" class="sms-btn"
-                      onclick="unlockPlayer(this, '${row.date}', ${col+1})">
-                  ` : `
-                    <img src="imessage.png" class="sms-btn"
-                      onclick="sendSMS(this, '${row.date}', ${col+1})">
-                  `}
+      const allConfirmed = row.status && row.status.every(s => s == 2);
 
-                  <img src="${img}" class="check-btn"
-                    data-state="${status}"
-                    onclick="toggleCheck(this, '${row.date}', ${col+1})">
-                </div>
-              `;
-            }).join("")}
+      return `
+        <div class="day-card ${allConfirmed ? "day-complete" : ""}" data-date="${row.date}">
+          <div class="day-header" onclick="toggleSet(this)">
+            <div class="day-name">${dayName}</div>
+
+            ${i === topDayIndex ? `<div class="tag">Top Day</div>` : ""}
+
+            <div class="carrot"></div>
           </div>
-          <button class="book-court-btn ${isBookCourtDone(row.date) ? "is-booked" : ""}"
-            onclick="bookCourt('${row.date}', this)"
-            ${isBookCourtDone(row.date) ? "disabled" : ""}>
-            ${isBookCourtDone(row.date) ? "Court Booked" : "Book Court"}
-          </button>
+
+          <div class="day-body">
+            <div class="player-row">
+              ${[0,1,2,3].map(col => {
+                const status = row.status?.[col] || 0;
+
+                let img = "white.png";
+                if (status == 1) img = "orange.png";
+                if (status == 2) img = "green.png";
+
+                return `
+                  <div class="player-slot">
+                    <input class="player-input"
+                      value="${row.players?.[col] ? capitalize(row.players[col]) : ""}"
+                      ${status !== 0 ? "disabled" : ""}
+                      ${status == 2 ? `style="border:2px solid #00c853"` : ""}
+                      onfocus="pauseScheduleRefresh(); attachAutocomplete(this, '${row.date}', ${col+1})">
+
+                    ${status == 2 ? `
+                      <img src="unlock.png" class="sms-btn"
+                        onclick="unlockPlayer(this, '${row.date}', ${col+1})">
+                    ` : `
+                      <img src="imessage.png" class="sms-btn"
+                        onclick="sendSMS(this, '${row.date}', ${col+1})">
+                    `}
+
+                    <img src="${img}" class="check-btn"
+                      data-state="${status}"
+                      onclick="toggleCheck(this, '${row.date}', ${col+1})">
+                  </div>
+                `;
+              }).join("")}
+            </div>
+            <button class="book-court-btn ${isBookCourtDone(row.date) ? "is-booked" : ""}"
+              onclick="bookCourt('${row.date}', this)"
+              ${isBookCourtDone(row.date) ? "disabled" : ""}>
+              ${isBookCourtDone(row.date) ? "Court Booked" : "Book Court"}
+            </button>
+          </div>
         </div>
-      </div>
-    `;
-  }).join("");
-  if (scheduleOpenDate) {
-    const openHeader = container.querySelector(`.day-card[data-date="${scheduleOpenDate}"] .day-header`);
-    if (openHeader) toggleSet(openHeader);
+      `;
+    }).join("");
+
+    if (scheduleOpenDate) {
+      const openHeader = container.querySelector(`.day-card[data-date="${scheduleOpenDate}"] .day-header`);
+      if (openHeader) toggleSet(openHeader);
+    }
+
+    endTimer("Schedule");
+
+  } catch (err) {
+    console.error("❌ loadSchedule crashed:", err);
+  } finally {
+    scheduleLoading = false; // 🔥 ALWAYS releases
   }
-  endTimer("Schedule");
 }
 
 function showSuccess(id) {
