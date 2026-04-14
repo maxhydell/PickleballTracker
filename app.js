@@ -1,6 +1,37 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbxkzKSWiHhnORLahEMWD4iulzjKqt0ukZwuzOZ9gbGwjlJo3zxd2DLnCkSvuFQiFnf6/exec";
 
 
+
+const memoryCache = {};
+let playersCache = [];
+let historyCache = [];
+let selectedPlayer = "max";
+let playerSelectTouched = false;
+let lastTodaySetsData = null;
+let scheduleOpenDate = null;
+let scheduleRefreshPausedUntil = 0;
+const BOOK_COURT_STORAGE_KEY = "pbTracker_bookedCourtDays_v1";
+
+const LS_DAY_COMPLETE = "pbTracker_dayComplete";
+const LS_PLAYER_PREF = "pbTracker_playerPref_v1";
+const LS_MORNING_WINPCT = "pbTracker_morningWinPct";
+const LS_SCHEDULE_WEEK_ANCHOR = "pbTracker_scheduleWeekAnchor_v1";
+
+let scheduleDirty = false;
+let pendingScheduleChanges = [];
+let touchStartY = 0;
+let holdTimer;
+let optimisticUpdates = {};
+let globalData = {
+  sets: null,
+  trend: null,
+  schedule: null,
+  history: null,
+  lastUpdated: null
+};
+
+
+
 window.loadedShared = false;
 let lastMetaSeen = null;
 function log(label, data) {
@@ -19,19 +50,6 @@ function endTimer(name) {
   activeTimers.delete(name);
   console.timeEnd(`⏱️ ${name}`);
 }
-
-let scheduleDirty = false;
-let pendingScheduleChanges = [];
-let touchStartY = 0;
-let holdTimer;
-let optimisticUpdates = {};
-let globalData = {
-  sets: null,
-  trend: null,
-  schedule: null,
-  history: null,
-  lastUpdated: null
-};
 
 async function initApp() {
   await loadAllData(); // 🔥 ONLY ONCE
@@ -63,20 +81,6 @@ document.addEventListener("touchend", () => {
 });
 
 
-const memoryCache = {};
-let playersCache = [];
-let historyCache = [];
-let selectedPlayer = "max";
-let playerSelectTouched = false;
-let lastTodaySetsData = null;
-let scheduleOpenDate = null;
-let scheduleRefreshPausedUntil = 0;
-const BOOK_COURT_STORAGE_KEY = "pbTracker_bookedCourtDays_v1";
-
-const LS_DAY_COMPLETE = "pbTracker_dayComplete";
-const LS_PLAYER_PREF = "pbTracker_playerPref_v1";
-const LS_MORNING_WINPCT = "pbTracker_morningWinPct";
-const LS_SCHEDULE_WEEK_ANCHOR = "pbTracker_scheduleWeekAnchor_v1";
 
 
 function getRoutePage() {
