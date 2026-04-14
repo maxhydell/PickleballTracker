@@ -537,6 +537,7 @@ async function saveSet(setNumber) {
 
     btn.innerText = "Saved";
     btn.classList.add("saved");
+    await loadRankings();
 
   } catch (e) {
     btn.innerText = "Error";
@@ -1772,14 +1773,8 @@ function updateScore(set, gameIndex, input) {
       btn.classList.remove("saved");
     }
 
-    // 🔥 HANDLE EMPTY SCORE
+    // 🔥 HANDLE EMPTY SCORE (FIXED — no API call)
     if (a === 0 && b === 0) {
-      callAPI({
-        action: "submitScore",
-        set,
-        game: gameIndex + 1,
-        score: ""
-      });
       return;
     }
 
@@ -1813,35 +1808,19 @@ function updateScore(set, gameIndex, input) {
     // 🔥 VISUAL FEEDBACK
     card.classList.add("saving");
 
-    console.log("📤 Sending score:", {
+    console.log("📝 Local score update only:", {
       set,
       game: gameIndex + 1,
       score
     });
 
+    // 🔥 FIXED: replaced broken .then/.catch with safe UI update
+    setTimeout(() => {
       card.classList.remove("saving");
       delete optimisticUpdates[key];
 
       showSuccess(`status-${set}-${gameIndex}`);
-
-      // 🔥 INSTANT RANKINGS UPDATE
-      setTimeout(() => loadRankings(), 200);
-    })
-    .catch(() => {
-      console.log("❌ Failed — reverting");
-
-      card.classList.remove("saving");
-
-      // revert cache
-      if (globalData.sets) {
-        const match = globalData.sets.find(m => m.set == set);
-        if (match) {
-          match.scores[gameIndex] = "0-0";
-        }
-      }
-
-      loadTodaySetsAll();
-    });
+    }, 200);
 
   }, 600); // 🔥 slightly faster than 1000ms
 }
