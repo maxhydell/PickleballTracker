@@ -1213,6 +1213,7 @@ async function onRankingsPlayerChange() {
 
 async function ultraSmartRefresh() {
   if (isEditingScores) return;
+  if (Object.keys(optimisticUpdates).length > 0) return; // 🔥 ADD THIS
   if (document.visibilityState !== "visible") return;
   if (Date.now() < scheduleRefreshPausedUntil) return;
   if (document.activeElement?.classList?.contains("player-input")) return;
