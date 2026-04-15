@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Open+Sans:ital,wght@0,700;1,700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -60,7 +61,24 @@
 
   <!-- PAGES -->
   <div id="input" class="page active">
-    <div id="dashboardGreeting" class="dashboard-greeting"></div>
+    <svg id="dashboardGreeting" viewBox="0 0 900 140" style="width:100%; max-width:600px;">
+      <text
+        id="greetingText"
+        x="0"
+        y="100"
+        font-size="72"
+        font-family="Pacifico, cursive"
+        fill="none"
+        stroke="var(--fg)"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-dasharray="2000"
+        stroke-dashoffset="2000"
+      >
+        Loading...
+      </text>
+    </svg>
     <div id="playerOnboard" class="player-onboard" style="display:none;"></div>
 
     <div class="card analytics-card-outer">

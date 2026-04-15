@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbxcRqmKIHADAFSZYMQppOOMDEnS1laHNz5fJdHNiFA9LrxP7FfCYLkrkCGvpT3HRlSn/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwp6yhmgbQmJnWN6gl3Q1ovXZJAXR45DzKcmajNGtsoAO3mg4i8VXPjhNnvuXo7QWVc/exec";
 
 
 
@@ -279,6 +279,15 @@ function showPage(id) {
     p.style.display = "none";
   });
 
+
+  const hasUnsaved =
+    Object.keys(optimisticUpdates).length > 0 || scheduleDirty;
+
+  if (hasUnsaved) {
+    const confirmLeave = confirm("You have unsaved changes. Leave anyway?");
+    if (!confirmLeave) return;
+
+
   const page = document.getElementById(id);
   page.style.display = "block";
   page.classList.add("active");
@@ -390,6 +399,7 @@ function renderSetsInto(container, data, opts = {}) {
     games.forEach((g, i) => {
       const key = `${match.set}-${i}`;
       const score = optimisticUpdates[key] || match.scores?.[i] || "0-0";
+      const isDirty = !!optimisticUpdates[key];
       let a = 0, b = 0;
 
       const game1 = match.scores?.[0] || "";
@@ -457,7 +467,10 @@ function renderSetsInto(container, data, opts = {}) {
               </div>
             ` : ""}
 
-            <div class="meta-info">Game ${i+1} • Set ${match.set}</div>
+            <div class="meta-row">
+              ${isDirty ? `<span class="unsaved-dot"></span>` : ""}
+              <div class="meta-info">Game ${i+1} • Set ${match.set}</div>
+            </div>
             <div id="status-${match.set}-${i}"></div>
           </div>
         </div>
@@ -521,8 +534,9 @@ async function saveSet(setNumber) {
     const scores = [];
 
     for (let i = 0; i < 3; i++) {
+      // FIX: Select inputs directly that have the updateScore call
       const inputs = document.querySelectorAll(
-        `.match-card [oninput*="updateScore(${setNumber}, ${i})"] input`
+        `.match-card input[oninput*="updateScore(${setNumber}, ${i},"]`
       );
 
       if (!inputs.length) {
@@ -547,7 +561,8 @@ async function saveSet(setNumber) {
       set: setNumber,
       scores: JSON.stringify(scores)
     });
-
+ 
+    console.log("🔥 SAVE RESPONSE:", res);
     // 🚨 RED FLAG
     if (res?.error) {
       btn.innerText = "Error";
@@ -559,13 +574,17 @@ async function saveSet(setNumber) {
     // 🔥 CRITICAL FIX — CLEAR CACHE
     Object.keys(memoryCache).forEach(k => delete memoryCache[k]);
 
-    // 🔥 FORCE FRESH DATA FROM SHEETS
-    await loadAllData(true);   // force=true bypasses cache
-    loadTodaySetsAll();        // reload sets UI
-    await loadRankings();      // reload rankings UI
+loadTodaySetsAll();
+await loadRankings();
 
-    btn.innerText = "Saved";
-    btn.classList.add("saved");
+// 🔥 re-apply AFTER DOM rebuild
+setTimeout(() => {
+  const btnAfter = document.getElementById(`save-btn-${setNumber}`);
+  if (btnAfter) {
+    btnAfter.innerText = "Saved";
+    btnAfter.classList.add("saved");
+  }
+}, 120);
 
   } catch (e) {
     console.error(e);
@@ -1509,6 +1528,8 @@ async function finishDay() {
   updateDoneUiVisibility();
   await loadRankings();
 
+
+
   const shareId = generateShareId();
   localStorage.setItem("results_" + shareId, JSON.stringify(final));
   localStorage.setItem(`pbTracker_results_${todayKey()}`, buildResultsHtml(
@@ -1797,11 +1818,11 @@ function updateScore(set, gameIndex, input) {
     const score = `${a}-${b}`;
 
     // 🔥 RESET SAVE BUTTON
-    const btn = document.getElementById(`save-btn-${set}`);
-    if (btn) {
-      btn.innerText = "Save";
-      btn.classList.remove("saved");
-    }
+const btn = document.getElementById(`save-btn-${set}`);
+if (btn && btn.classList.contains("saved")) {
+  btn.innerText = "Save";
+  btn.classList.remove("saved");
+}
 
     // 🔥 EMPTY = DO NOTHING
     if (a === 0 && b === 0) {
@@ -2646,37 +2667,46 @@ async function changeDashboardPlayer(name) {
 
 
 function renderGreeting() {
-  const el = document.getElementById("dashboardGreeting");
-  if (!el) return;
+  const svg = document.getElementById("dashboardGreeting");
+  if (!svg) return;
+
+  const textEl = svg.querySelector("#greetingText");
+  if (!textEl) return;
+
   const url = getPlayerFromURL();
   const stored = getPreferredPlayerFromStorage();
   const nameKey = url || stored || "";
+
   const h = new Date().getHours();
   let part = "Good evening";
   if (h < 12) part = "Good morning";
   else if (h < 17) part = "Good afternoon";
-  el.textContent = nameKey ? `${part}, ${capitalize(nameKey)}.` : `${part}.`;
+
+  const finalText = nameKey
+    ? `${part}, ${capitalize(nameKey)}.`
+    : `${part}.`;
+
+  textEl.textContent = finalText;
+
+  // ✅ Only animate first time ever
+  if (!localStorage.getItem("greetingAnimated")) {
+    restartGreetingAnimation(textEl);
+    localStorage.setItem("greetingAnimated", "true");
+  }
+
+  // ✅ Add interaction triggers (only once)
+  if (!svg.dataset.listenersAdded) {
+    svg.addEventListener("mouseenter", () => restartGreetingAnimation(textEl));
+    svg.addEventListener("touchstart", () => restartGreetingAnimation(textEl), { passive: true });
+
+    svg.dataset.listenersAdded = "true";
+  }
 }
 
-function renderPlayerOnboard() {
-  const wrap = document.getElementById("playerOnboard");
-  if (!wrap) return;
-  if (getPlayerFromURL() || getPreferredPlayerFromStorage()) {
-    wrap.style.display = "none";
-    wrap.innerHTML = "";
-    return;
-  }
-  wrap.style.display = "block";
-  wrap.innerHTML = `
-    <div class="player-onboard-inner card">
-      <p class="player-onboard-text">Please provide your name for a more tailored experience.</p>
-      <div class="onboard-input-wrap">
-        <input type="text" id="onboardPlayerInput" class="onboard-input" placeholder="Start typing your name" autocomplete="off">
-      </div>
-    </div>
-  `;
-  const inp = document.getElementById("onboardPlayerInput");
-  if (inp) attachOnboardAutocomplete(inp);
+function restartGreetingAnimation(el) {
+  el.style.animation = "none";
+  el.getBoundingClientRect(); // force reflow
+  el.style.animation = "";
 }
 
 function attachOnboardAutocomplete(input) {
@@ -2837,5 +2867,18 @@ window.addEventListener("load", async () => {
 });
 
 preloadData();
+
+
+window.addEventListener("beforeunload", function (e) {
+  const hasUnsaved = Object.keys(optimisticUpdates).length > 0 || scheduleDirty;
+
+  if (!hasUnsaved) return;
+
+  e.preventDefault();
+  e.returnValue = ""; // required for Chrome
+});
+
+
+
 
 setInterval(ultraSmartRefresh, 4000);
