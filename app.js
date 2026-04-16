@@ -286,7 +286,7 @@ function showPage(id) {
   if (hasUnsaved) {
     const confirmLeave = confirm("You have unsaved changes. Leave anyway?");
     if (!confirmLeave) return;
-
+  } // ✅ THIS WAS MISSING
 
   const page = document.getElementById(id);
   page.style.display = "block";
