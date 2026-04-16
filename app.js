@@ -2664,14 +2664,9 @@ async function changeDashboardPlayer(name) {
 
 
 
-
-
 function renderGreeting() {
-  const svg = document.getElementById("dashboardGreeting");
-  if (!svg) return;
-
-  const textEl = svg.querySelector("#greetingText");
-  if (!textEl) return;
+  const el = document.getElementById("greetingText");
+  if (!el) return;
 
   const url = getPlayerFromURL();
   const stored = getPreferredPlayerFromStorage();
@@ -2682,31 +2677,9 @@ function renderGreeting() {
   if (h < 12) part = "Good morning";
   else if (h < 17) part = "Good afternoon";
 
-  const finalText = nameKey
-    ? `${part}, ${capitalize(nameKey)}.`
-    : `${part}.`;
-
-  textEl.textContent = finalText;
-
-  // ✅ Only animate first time ever
-  if (!localStorage.getItem("greetingAnimated")) {
-    restartGreetingAnimation(textEl);
-    localStorage.setItem("greetingAnimated", "true");
-  }
-
-  // ✅ Add interaction triggers (only once)
-  if (!svg.dataset.listenersAdded) {
-    svg.addEventListener("mouseenter", () => restartGreetingAnimation(textEl));
-    svg.addEventListener("touchstart", () => restartGreetingAnimation(textEl), { passive: true });
-
-    svg.dataset.listenersAdded = "true";
-  }
-}
-
-function restartGreetingAnimation(el) {
-  el.style.animation = "none";
-  el.getBoundingClientRect(); // force reflow
-  el.style.animation = "";
+  el.textContent = nameKey
+    ? `${part}, ${capitalize(nameKey)}`
+    : part;
 }
 
 function attachOnboardAutocomplete(input) {

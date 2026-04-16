@@ -1519,34 +1519,14 @@ select.dash-player-select option,
 
 
 /* drawing text */
-#dashboardGreeting text {
-  animation: drawGreeting 3.5s cubic-bezier(.65,0,.35,1) forwards,
-             fillGreeting 0.6s ease forwards 3.5s;
-  filter: drop-shadow(0 0 6px rgba(255,255,255,0.3));
+#greetingText {
+  font-family: 'League Spartan', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #e5e7eb;
+  margin: 8px 0 14px;
+  padding: 0 4px;
 }
-
-
-#dashboardGreeting:hover {
-  transform: scale(1.03);
-}
-
-@keyframes drawGreeting {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes fillGreeting {
-  to {
-    fill: var(--fg);
-  }
-}
-@keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.6); }
-  to { opacity: 0.9; transform: scale(1); }
-}
-
-
 /* unsaved */
 .unsaved-dot {
   animation: fadeIn 0.2s ease;
