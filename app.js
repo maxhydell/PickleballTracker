@@ -707,7 +707,7 @@ if (gamesPlayed > 5) {
   check.src = "orange.png";
   check.dataset.state = 1;
 
-  callAPI({f
+  callAPI({
     action: "updateSchedule",
     date,
     col,
