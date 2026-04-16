@@ -166,8 +166,10 @@ h1, h2 {
   /* 🔥 give it breathing room */
   padding: 14px;
 
-  /* 🔥 remove centering shrink */
-  display: block;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
 }
 .revert-day-btn {
   margin-top: 12px;
@@ -1050,6 +1052,7 @@ select.dash-player-select option,
 
 .analytics-tables-stack {
   width: 100%;
+  gap: 10px;
   margin-top: 8px;
 }
 
@@ -1561,4 +1564,25 @@ select.dash-player-select option,
 @keyframes pulse {
   0%, 100% { opacity: 0.9; }
   50% { opacity: 0.4; }
+}
+
+.global-analytics-modal__close {
+  width: 20px !important;
+  height: 20px !important;
+  font-size: 16px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.1);
+  cursor: pointer;
+
+  transition: background 0.2s ease;
+}
+
+.global-analytics-modal__close:hover {
+  background: rgba(255,255,255,0.2);
 }

@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbwp6yhmgbQmJnWN6gl3Q1ovXZJAXR45DzKcmajNGtsoAO3mg4i8VXPjhNnvuXo7QWVc/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbzLRWG--F39AZ55vE9AgqwLc35YFwEJvL1L3WTZQpwgQ0_IK5OO3tk4O6xTPK5eDYig/exec";
 
 
 
@@ -54,6 +54,8 @@ function endTimer(name) {
 
 async function initApp() {
   await loadAllData(); // 🔥 ONLY ONCE
+  // ✅ ADD THIS LINE
+  getMorningWinPctSnapshot(globalData.trend);
   loadSchedule();
   loadTodaySetsAll();
 }
@@ -401,7 +403,7 @@ function renderSetsInto(container, data, opts = {}) {
     games.forEach((g, i) => {
       const key = `${match.set}-${i}`;
       const score = optimisticUpdates[key] || match.scores?.[i] || "0-0";
-      const isDirty = !!optimisticUpdates[key];
+      const isDirty = optimisticUpdates[key] !== undefined;
       let a = 0, b = 0;
 
       const game1 = match.scores?.[0] || "";
@@ -470,7 +472,7 @@ function renderSetsInto(container, data, opts = {}) {
             ` : ""}
 
             <div class="meta-row">
-              ${isDirty ? `<span class="unsaved-dot"></span>` : ""}
+              ${!isDirty ? "" : `<span class="unsaved-dot"></span>`}
               <div class="meta-info">Game ${i+1} • Set ${match.set}</div>
             </div>
             <div id="status-${match.set}-${i}"></div>
@@ -564,6 +566,8 @@ async function saveSet(setNumber) {
       scores: JSON.stringify(scores)
     });
  
+    await callAPI({ action: "sendSaveNotification" });
+
     console.log("🔥 SAVE RESPONSE:", res);
     // 🚨 RED FLAG
     if (res?.error) {
@@ -667,11 +671,23 @@ function sendSMS(btn, date, col) {
 
   const day = new Date(date).toLocaleDateString("en-US",{weekday:"long"});
 
-  const messages = [
-    `Hey do you want to play 6:30am @ the Y ${day}?`,
-    `Can you play 6:30am @ the Y ${day}?`,
-    `Are you in for 6:30am @ the Y ${day}?`
+const gamesPlayed = player.games || 0;
+
+let messages;
+
+if (gamesPlayed > 5) {
+  messages = [
+    `can you play 630 ${day}`,
+    `Can you play 630 ${day}`,
+    `can you play 6:30 ${day}`,
+    `do you want to play 630 ${day}?`,
+    `want to play 6:30 ${day}?`
   ];
+} else {
+  messages = [
+    `Do you want to play 6:30am ${day} @ the Y?`
+  ];
+}
 
   const msg = messages[Math.floor(Math.random()*messages.length)];
 
@@ -691,7 +707,7 @@ function sendSMS(btn, date, col) {
   check.src = "orange.png";
   check.dataset.state = 1;
 
-  callAPI({
+  callAPI({f
     action: "updateSchedule",
     date,
     col,
@@ -1122,6 +1138,7 @@ async function loadRankings() {
   startTimer("Rankings Graph + Leaderboard");
   if (!globalData.trend) await loadAllData();
   const data = globalData.trend;
+  const maxGames = Math.max(...data.map(d => d.games));
   if (!data || !data.length) return;
 
   getMorningWinPctSnapshot(data);
@@ -1459,6 +1476,13 @@ async function finishDay() {
 
   // 🔥 2. SAVE DAY + UPDATE STATS (your existing backend logic)
   await callAPI({ action: "saveHistory" });
+  // 🔔 REQUEST NOTIFICATION PERMISSION
+if (window.OneSignal && !localStorage.getItem("notifAsked")) {
+  OneSignal.push(() => {
+    OneSignal.Notifications.requestPermission();
+  });
+  localStorage.setItem("notifAsked", "1");
+}
 
   // 🔥 3. SNAPSHOT AFTER
   const after = await callAPI({ action: "getUserTrend" });
@@ -1500,15 +1524,16 @@ async function finishDay() {
   });
 
   // ===== ADD % CHANGE =====
-  const final = Object.keys(results).map(name => {
+const morning = getMorningWinPctSnapshot(globalData.trend || before || []);
 
-    const beforeP =
-      before.find(p => p.name.toLowerCase() === name)?.winPct || 0;
+const final = Object.keys(results).map(name => {
 
-    const afterP =
-      after.find(p => p.name.toLowerCase() === name)?.winPct || 0;
+  const base = morning[name.toLowerCase()] || 0;
 
-    const change = ((afterP - beforeP) * 100).toFixed(2);
+  const afterP =
+    after.find(p => p.name.toLowerCase() === name)?.winPct || 0;
+
+  const change = Number(((afterP - base) * 100).toFixed(2));
 
     return {
       name,
@@ -1536,7 +1561,7 @@ async function finishDay() {
   localStorage.setItem("results_" + shareId, JSON.stringify(final));
   localStorage.setItem(`pbTracker_results_${todayKey()}`, buildResultsHtml(
     final.map(x => ({ ...x, key: x.name.toLowerCase(), displayName: x.name })),
-    getMorningWinPctSnapshot(before || []),
+    getMorningWinPctSnapshot(globalData.trend || before || []),
     after || []
   ));
 
@@ -1982,15 +2007,14 @@ function openLosingStreak(stats, selectedPlayer) {
   );
 }
 function openGamesPlayed(stats, selectedPlayer) {
-  const totalGames = Object.values(stats).reduce((a,b)=>a+b.games,0);
+const maxGames = Math.max(...Object.values(stats).map(d => d.games)) || 1;
 
-  const rows = Object.entries(stats)
-    .map(([name, d]) => ({
-      name: capitalize(name),
-      games: d.games,
-      pct: Math.round((d.games / totalGames) * 100) + "%"
-    }))
-    .sort((a,b)=>b.games-a.games);
+const rows = Object.entries(stats)
+  .map(([name, d]) => ({
+    name: capitalize(name),
+    games: d.games,
+    pct: Math.round((d.games / maxGames) * 100) + "%"
+  }))
 
   showAnalyticsModal(
     "Games Played",
@@ -2161,7 +2185,7 @@ async function saveScheduleChanges() {
   }
 
   pendingScheduleChanges = [];
-  scheduleDirty = false;
+  scheduleDirty = true;
 
   updateSaveButton();
 
