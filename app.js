@@ -1174,7 +1174,7 @@ async function loadRankings() {
     historyCache = globalData.history;
   }
   startTimer("Analytics");
-  renderDashboardAnalytics(selectedPlayer);
+  renderRankingsAnalytics(selectedPlayer);
   endTimer("Analytics");
 
   const rank = sorted.findIndex(p => p.name === player.name) + 1;
@@ -1268,6 +1268,29 @@ async function onRankingsPlayerChange() {
   const dash = document.getElementById("dashPlayerSelect");
   if (dash) dash.value = selectedPlayer;
   await loadRankings();
+}
+
+
+function renderRankingsAnalytics(player) {
+  const container = document.getElementById("rankingsAnalytics");
+  const tables = document.getElementById("rankingsAnalyticsTables");
+
+  if (!container) return;
+
+  const p = globalData.trend.find(
+    x => x.name.toLowerCase() === player
+  );
+
+  if (!p) return;
+
+  container.innerHTML = `
+    <div class="analytics-stat">Win %: ${formatWinPctDisplay(p.winPct)}</div>
+    <div class="analytics-stat">Games: ${p.games}</div>
+    <div class="analytics-stat">Points Avg: ${Number(p.pointsAvg || 0).toFixed(2)}</div>
+  `;
+
+  // optional tables reset
+  if (tables) tables.innerHTML = "";
 }
 
 async function ultraSmartRefresh() {
@@ -1775,10 +1798,49 @@ function getConsistency(history, player) {
 
 
 function toggleMenu() {
-  document.getElementById("sideMenu").classList.toggle("open");
-  document.getElementById("overlay").classList.toggle("show");
+  const menu = document.getElementById("sideMenu");
+  const overlay = document.getElementById("overlay");
+
+  menu.classList.toggle("open");
+  overlay.classList.toggle("show");
+
+  // ❌ REMOVE ANY blur class on body/app
 }
 
+function triggerShare(name) {
+  const url = `https://maxhydell.github.io/pbTracker/share/?p=${encodeURIComponent(name)}`;
+
+  if (navigator.share) {
+    navigator.share({
+      title: "PB Tracker",
+      text: `Check this out`,
+      url
+    });
+  } else {
+    window.open(url, "_blank");
+  }
+}
+
+function openShare() {
+  const wrap = document.getElementById("playerOnboard");
+  if (!wrap) return;
+
+  wrap.style.display = "block";
+  wrap.innerHTML = `
+    <div class="player-onboard-inner card">
+      <p class="player-onboard-text">Who do you want to share this with?</p>
+      <div class="onboard-input-wrap">
+        <input type="text" id="shareInput" class="onboard-input" placeholder="Start typing a name">
+      </div>
+    </div>
+  `;
+
+  const input = document.getElementById("shareInput");
+
+  attachOnboardAutocomplete(input, (selectedName) => {
+    triggerShare(selectedName);
+  });
+}
 
 
 function attachAutocomplete(input, date, col) {

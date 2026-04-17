@@ -230,6 +230,8 @@ h1, h2 {
   font-size: 14px !important;
 }
 
+
+
 /* =========================
    PAGE SYSTEM (ADDED)
 ========================= */
@@ -919,14 +921,21 @@ button:active {
   inset: 0;
   background: rgba(0,0,0,0.4);
   backdrop-filter: blur(8px);
-  z-index: 9998;
-  display: none;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 5;
 }
 
 .overlay.show {
   display: block;
+  opacity: 1;
+  pointer-events: auto;
 }
 
+/* 🚨 KEY FIX */
+.app.menu-open {
+  filter: none; /* REMOVE blur from app */
+}
 /* =========================
    TAB BAR
 ========================= */
@@ -1193,7 +1202,40 @@ select.dash-player-select option,
   border: none;
 }
 
+/* rankings analytics */
 
+
+#rankingsAnalyticsTables {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  text-align: center;
+}
+#rankingsAnalytics {
+  width: 100%;
+  max-width: 360px;
+  margin: 0 auto;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+#rankingsAnalytics .analytics-stat {
+  width: 100%;
+  background: linear-gradient(145deg, #1a1614, #241f1c);
+  border-radius: 14px;
+  padding: 14px;
+
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+
+  box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+}
 /* analytics */
 
 
@@ -1646,4 +1688,14 @@ select.dash-player-select option,
 
 .global-analytics-modal__close:hover {
   background: rgba(255,255,255,0.2);
+}
+
+/* share */
+.player-onboard-inner {
+  animation: fadeSlide 0.25s ease;
+}
+
+@keyframes fadeSlide {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
