@@ -2361,7 +2361,7 @@ pendingScheduleChanges.forEach(c => {
 });
 
 // 🔥 NOTHING CHANGED → SKIP API CALL
-if (!changes.length) return;
+if (!changes.length) continue;
 
 // 🔥 NEW PAYLOAD (ONLY CHANGED FIELDS)
 const payload = {
