@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbwwxcIeovMcpBxVzKuTfNJPIqX-JfWl544pYBw3vlArfNutFcMg85aKiukTtKtOrHWP/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwqhVdCcPsgyamYkokESh5A95i5JQxqVAX2OKo83t6GtLLHaSpFOhGY1CIim_SUZtg2/exec";
 
 
 
@@ -392,7 +392,7 @@ function renderSetsInto(container, data, opts = {}) {
           Save
         </button>
 
-        <span class="carrot"></span>
+        <span class="add-game-btn" onclick="addGame(${match.set}, event)">+</span>
       </div>
 
       <div class="set-body"></div>
@@ -537,7 +537,7 @@ async function saveSet(setNumber) {
   try {
     const scores = [];
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       // FIX: Select inputs directly that have the updateScore call
       const inputs = document.querySelectorAll(
         `.match-card input[oninput*="updateScore(${setNumber}, ${i},"]`
@@ -608,6 +608,61 @@ function unlockGame(set, gameIndex) {
     i.style.filter = "none";
   });
 }
+
+
+function addGame(setNumber, e) {
+  e.stopPropagation();
+
+  const set = lastTodaySetsData.find(s => s.set === setNumber);
+  if (!set) return;
+
+  const [g1, g2, g3] = set.scores || [];
+
+  const isSweep =
+    g1 && g2 &&
+    (
+      (g1.split("-")[0] > g1.split("-")[1] &&
+       g2.split("-")[0] > g2.split("-")[1]) ||
+      (g1.split("-")[1] > g1.split("-")[0] &&
+       g2.split("-")[1] > g2.split("-")[0])
+    );
+
+  // 🔥 CASE 1: sweep → just unlock game 3
+  if (isSweep) {
+    unlockGame(setNumber, 2);
+    return;
+  }
+
+  // 🔥 CASE 2: add Game 4
+  const container = document.querySelector(`#save-btn-${setNumber}`).closest(".set-container");
+  const body = container.querySelector(".set-body");
+
+  const index = 3; // game 4
+
+  const html = `
+    <div class="match-card">
+      <div class="left-content">
+        <div class="team-row">
+          <span class="team-names">${formatNames(set.teamA)}</span>
+          <span class="status-badge tie">tie</span>
+        </div>
+        <div class="opponents">${formatNames(set.teamB)}</div>
+      </div>
+
+      <div class="right-content">
+        <div class="score-editable">
+          <input type="number" oninput="updateScore(${setNumber}, ${index}, this)">
+          <span>-</span>
+          <input type="number" oninput="updateScore(${setNumber}, ${index}, this)">
+        </div>
+        <div class="meta-info">Game 4 • Set ${setNumber}</div>
+      </div>
+    </div>
+  `;
+
+  body.innerHTML += html;
+}
+
 
 
 function toggleSet(el) {
@@ -1174,7 +1229,7 @@ async function loadRankings() {
     historyCache = globalData.history;
   }
   startTimer("Analytics");
-  renderRankingsAnalytics(selectedPlayer);
+  renderDashboardAnalytics(selectedPlayer);
   endTimer("Analytics");
 
   const rank = sorted.findIndex(p => p.name === player.name) + 1;
@@ -1268,29 +1323,6 @@ async function onRankingsPlayerChange() {
   const dash = document.getElementById("dashPlayerSelect");
   if (dash) dash.value = selectedPlayer;
   await loadRankings();
-}
-
-
-function renderRankingsAnalytics(player) {
-  const container = document.getElementById("rankingsAnalytics");
-  const tables = document.getElementById("rankingsAnalyticsTables");
-
-  if (!container) return;
-
-  const p = globalData.trend.find(
-    x => x.name.toLowerCase() === player
-  );
-
-  if (!p) return;
-
-  container.innerHTML = `
-    <div class="analytics-stat">Win %: ${formatWinPctDisplay(p.winPct)}</div>
-    <div class="analytics-stat">Games: ${p.games}</div>
-    <div class="analytics-stat">Points Avg: ${Number(p.pointsAvg || 0).toFixed(2)}</div>
-  `;
-
-  // optional tables reset
-  if (tables) tables.innerHTML = "";
 }
 
 async function ultraSmartRefresh() {
@@ -1796,17 +1828,16 @@ function getConsistency(history, player) {
   return Math.round((1 - stdDev) * 100);
 }
 
-
 function toggleMenu() {
   const menu = document.getElementById("sideMenu");
   const overlay = document.getElementById("overlay");
+  const app = document.querySelector(".app");
 
-  menu.classList.toggle("open");
-  overlay.classList.toggle("show");
+  const isOpen = menu.classList.toggle("open");
 
-  // ❌ REMOVE ANY blur class on body/app
+  overlay.classList.toggle("show", isOpen);
+  app.classList.toggle("blurred", isOpen);
 }
-
 function triggerShare(name) {
   const url = `https://maxhydell.github.io/pbTracker/share/?p=${encodeURIComponent(name)}`;
 
@@ -2993,6 +3024,3 @@ window.addEventListener("beforeunload", function (e) {
   e.preventDefault();
   e.returnValue = ""; // required for Chrome
 });
-
-
-
