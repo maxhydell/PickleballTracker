@@ -2373,6 +2373,7 @@ const payload = {
 console.log("📤 sending:", payload);
 
 await callAPI(payload);
+}
 
   pendingScheduleChanges = [];
   scheduleDirty = false;
