@@ -58,6 +58,9 @@ async function initApp() {
   getMorningWinPctSnapshot(globalData.trend);
   loadSchedule();
   loadTodaySetsAll();
+  // 🔥 ADD THIS
+  const page = getRoutePage();
+  showPage(page);
 }
 
 initApp();
@@ -297,7 +300,7 @@ function showPage(id) {
   page.classList.add("active");
 
   document.getElementById("sideMenu").classList.remove("open");
-  document.getElementById("overlay").classList.remove("show");
+ // document.getElementById("overlay").classList.remove("show");
 
   if (id === "rankings") {
     requestAnimationFrame(() => loadRankings());
@@ -805,7 +808,12 @@ async function addPlayerPrompt() {
 
 function toggleCheck(btn, date, col) {
   const input = btn.parentElement.querySelector("input");
-  persistScheduleName(date, col, input?.value || "");
+  const currentName = (input?.value || "").trim();
+
+  // 🔥 ONLY SAVE IF NOT EMPTY
+  if (currentName) {
+    persistScheduleName(date, col, currentName);
+  }
 
   let state = Number(btn.dataset.state || 0);
 
@@ -1830,47 +1838,84 @@ function getConsistency(history, player) {
 
 function toggleMenu() {
   const menu = document.getElementById("sideMenu");
-  const overlay = document.getElementById("overlay");
-  const app = document.querySelector(".app");
+  // const overlay = document.getElementById("overlay");
+ // const app = document.querySelector(".app");
 
-  const isOpen = menu.classList.toggle("open");
+ // const isOpen = menu.classList.toggle("open");
 
-  overlay.classList.toggle("show", isOpen);
-  app.classList.toggle("blurred", isOpen);
+    menu.classList.toggle("open");
+ // app.classList.toggle("blurred", isOpen);
 }
-function triggerShare(name) {
-  const url = `https://maxhydell.github.io/pbTracker/share/?p=${encodeURIComponent(name)}`;
 
-  if (navigator.share) {
-    navigator.share({
-      title: "PB Tracker",
-      text: `Check this out`,
-      url
-    });
-  } else {
-    window.open(url, "_blank");
-  }
-}
+
+
+
 
 function openShare() {
   const wrap = document.getElementById("playerOnboard");
   if (!wrap) return;
 
-  wrap.style.display = "block";
-  wrap.innerHTML = `
-    <div class="player-onboard-inner card">
-      <p class="player-onboard-text">Who do you want to share this with?</p>
-      <div class="onboard-input-wrap">
-        <input type="text" id="shareInput" class="onboard-input" placeholder="Start typing a name">
-      </div>
+wrap.style.display = "block";
+wrap.innerHTML = `
+  <div class="player-onboard-inner card">
+    <p class="player-onboard-text">Who do you want to share this with?</p>
+
+    <div class="onboard-input-wrap">
+      <input type="text" id="shareInput" class="onboard-input" placeholder="Start typing a name">
     </div>
-  `;
+
+    <button onclick="closeShare()" style="margin-top:10px;">Cancel</button>
+  </div>
+`;
 
   const input = document.getElementById("shareInput");
 
   attachOnboardAutocomplete(input, (selectedName) => {
     triggerShare(selectedName);
   });
+}
+
+function triggerShare(name) {
+  if (!name) return;
+
+  const player =
+    selectedPlayer ||
+    new URLSearchParams(window.location.search).get("p") ||
+    localStorage.getItem("player");
+
+  const url = `https://maxhydell.github.io/pbTracker/?page=input&p=${player}`;
+
+  const message = `${capitalize(name)}, check this out: ${url}`;
+
+  // 📱 iPhone (your shortcut system)
+  const phonePlayer = playersCache.find(p =>
+    p.name.toLowerCase() === name.toLowerCase()
+  );
+
+  if (phonePlayer?.phone) {
+    const phone = phonePlayer.phone.startsWith("+1")
+      ? phonePlayer.phone
+      : "+1" + phonePlayer.phone.replace(/\D/g, "");
+
+    const payload = `${phone}|${message}`;
+    const link = `shortcuts://run-shortcut?name=SMS&input=text&text=${encodeURIComponent(payload)}`;
+
+    window.location.href = link;
+  } else {
+    // fallback → copy
+    navigator.clipboard.writeText(message);
+    alert("Message copied!");
+  }
+
+  closeShare();
+}
+
+function closeShare() {
+  const wrap = document.getElementById("playerOnboard");
+  if (!wrap) return;
+
+  wrap.innerHTML = "";
+  wrap.style.display = "none";
 }
 
 
@@ -2288,35 +2333,45 @@ async function saveScheduleChanges() {
 
     const formattedDate = `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`;
 
-    const payload = {
-      action: "saveFullScheduleDay",
+// 🔥 get original row
+const existing = (globalData.schedule || []).find(r =>
+  new Date(r.date).toDateString() === new Date(date).toDateString()
+);
 
-      // A, B
-      date: formattedDate,
-      day: dayNum,
+const payload = {
+  action: "saveFullScheduleDay",
+  date: formattedDate,
+  day: dayNum,
 
-      // C-F (players)
-      p1: days[date].names[0] || "",
-      p2: days[date].names[1] || "",
-      p3: days[date].names[2] || "",
-      p4: days[date].names[3] || "",
+  // 🔥 KEEP OLD IF NOT EDITED
+  p1: days[date].names[0] || existing?.players?.[0] || "",
+  p2: days[date].names[1] || existing?.players?.[1] || "",
+  p3: days[date].names[2] || existing?.players?.[2] || "",
+  p4: days[date].names[3] || existing?.players?.[3] || "",
 
-      // G = spacer (do nothing)
+s1: days[date].status[0] !== undefined
+  ? days[date].status[0]
+  : (existing?.status?.[0] ?? 0),
 
-      // H-K (status)
-      s1: days[date].status[0] || 0,
-      s2: days[date].status[1] || 0,
-      s3: days[date].status[2] || 0,
-      s4: days[date].status[3] || 0
-    };
+s2: days[date].status[1] !== undefined
+  ? days[date].status[1]
+  : (existing?.status?.[1] ?? 0),
 
+s3: days[date].status[2] !== undefined
+  ? days[date].status[2]
+  : (existing?.status?.[2] ?? 0),
+
+s4: days[date].status[3] !== undefined
+  ? days[date].status[3]
+  : (existing?.status?.[3] ?? 0),
+};
     console.log("📤 sending:", payload);
 
     await callAPI(payload);
   }
 
   pendingScheduleChanges = [];
-  scheduleDirty = true;
+  scheduleDirty = false;
 
   updateSaveButton();
 
@@ -2898,20 +2953,28 @@ function navigate(page) {
   const url = new URL(window.location.origin + base);
 
   const currentParams = new URLSearchParams(window.location.search);
-  const player = currentParams.get("p");
+  const player =
+    currentParams.get("p") ||
+    selectedPlayer ||
+    localStorage.getItem("player");
 
-  // keep player param
+  // ✅ always preserve player
   if (player) {
     url.searchParams.set("p", player);
   }
 
-  // handle page param
-  if (page !== "input") {
-    url.searchParams.set("page", page);
-  }
+  // ✅ ALWAYS set page (fixes bugs)
+  url.searchParams.set("page", page);
 
+  // ✅ update URL without reload
   window.history.pushState({}, "", url);
+
+  // ✅ update UI
   showPage(page);
+
+  // ✅ CLOSE MENU (important)
+  const menu = document.getElementById("sideMenu");
+  if (menu) menu.classList.remove("open");
 }
 
 function goTo(page) {
@@ -2931,7 +2994,8 @@ function goTo(page) {
   window.location.href = url.toString();
 }
 window.addEventListener("popstate", () => {
-  showPage(getRoutePage());
+  const page = getRoutePage();
+  showPage(page);
 });
 
 (async () => {

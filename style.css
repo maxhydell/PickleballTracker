@@ -915,22 +915,9 @@ button:active {
 /* =========================
    OVERLAY
 ========================= */
-
+/* 🔥 DISABLE OVERLAY COMPLETELY */
 .overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.4);
-
-  opacity: 0;
-  pointer-events: none;
-
-  z-index: 5;
-  transition: opacity 0.25s ease;
-}
-
-.overlay.show {
-  opacity: 1;
-  pointer-events: auto;
+  display: none !important;
 }
 
 /* =========================
@@ -1706,6 +1693,7 @@ select.dash-player-select option,
 
   display: flex;
   flex-direction: column; /* 🔥 enables push layout */
+  justify-content: space-between; 
 
   background: linear-gradient(180deg, #0a1a2f, #000);
   z-index: 9999;
@@ -1723,6 +1711,7 @@ select.dash-player-select option,
 .menu-bottom {
   margin-top: auto;
   border-top: 1px solid rgba(255,255,255,0.08);
+  padding: 16px;
   padding-bottom: 20px; /* 👈 your “20px above bottom” */
 }
 
