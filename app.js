@@ -1388,6 +1388,7 @@ async function onRankingsPlayerChange() {
 async function ultraSmartRefresh() {
   if (isEditingScores) return;
   if (Object.keys(optimisticUpdates).length > 0) return; // 🔥 ADD THIS
+  if (isDayComplete()) return;
   if (document.visibilityState !== "visible") return;
   if (Date.now() < scheduleRefreshPausedUntil) return;
   if (document.activeElement?.classList?.contains("player-input")) return;
@@ -1541,10 +1542,7 @@ function buildResultsHtml(standings, morningPcts, afterTrend) {
   }
 
   const rows = standings.map((s, i) => {
-    const trendRow = (afterTrend || []).find(p => p.name.toLowerCase() === s.key);
-    const afterPct = trendRow ? Number(trendRow.winPct) : 0;
-    const beforePct = s.prevWinPct != null ? Number(s.prevWinPct) : afterPct;
-    const delta = (afterPct - beforePct) * 100;
+    const delta = Number(s.change) || 0;
     const deltaStr = `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}%`;
     const cls = delta >= 0 ? "delta-pos" : "delta-neg";
     return `
@@ -1586,7 +1584,7 @@ async function finishDay() {
   console.log("🏁 finishDay clicked");
 
   // 🔥 1. SNAPSHOT BEFORE
-  const before = await callAPI({ action: "getUserTrend" });
+  const before = await callAPI({ action: "getUserTrend" }, { force: true });
 
   // 🔥 2. SAVE DAY + UPDATE STATS (your existing backend logic)
 
@@ -1617,7 +1615,7 @@ if (window.OneSignal && !localStorage.getItem("notifAsked")) {
 }
 
   // 🔥 3. SNAPSHOT AFTER
-  const after = await callAPI({ action: "getUserTrend" });
+  const after = await callAPI({ action: "getUserTrend" }, { force: true });
 
   // 🔥 4. GET TODAY SETS (for wins + points)
   const sets = await callAPI({ action: "getTodaySets" });
@@ -1661,7 +1659,7 @@ if (window.OneSignal && !localStorage.getItem("notifAsked")) {
     const prev = await callAPI({
       action: "getPreviousHistoryEntry",
       name: name
-    });
+    }, { force: true });
     previousHistoryMap[name] = prev;
   }
 
@@ -1670,6 +1668,14 @@ if (window.OneSignal && !localStorage.getItem("notifAsked")) {
     const previous = previousHistoryMap[name] || { winPct: 0, pointsAvg: 0 };
     const current = before.find(p => p.name.toLowerCase() === name)?.winPct || 0;
     const change = Number(((current - previous.winPct) * 100).toFixed(2));
+
+    console.log("📊 finishDay delta", {
+      name,
+      previousWinPct: previous.winPct,
+      currentWinPct: current,
+      afterWinPct: after.find(p => p.name.toLowerCase() === name)?.winPct || 0,
+      change
+    });
 
     return {
       name,
@@ -1694,6 +1700,13 @@ if (window.OneSignal && !localStorage.getItem("notifAsked")) {
   await callAPI({ action: "saveHistory" });
 
   await loadRankings();
+
+  console.log("📊 finishDay snapshots", {
+    before,
+    after,
+    previousHistoryMap,
+    final
+  });
 
 
 
