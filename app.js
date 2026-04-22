@@ -12,6 +12,7 @@ let lastTodaySetsData = null;
 let scheduleOpenDate = null;
 let scheduleRefreshPausedUntil = 0;
 let appStartupPromise = null;
+let appBootComplete = false;
 let refreshLoopStarted = false;
 const BOOK_COURT_STORAGE_KEY = "pbTracker_bookedCourtDays_v1";
 
@@ -88,6 +89,149 @@ function hideLoadingScreen() {
   }, 400);
 }
 
+function getSetScores(match) {
+  const baseScores = Array.isArray(match?.scores) ? [...match.scores] : [];
+  const totalGames = Math.max(3, baseScores.length);
+
+  while (baseScores.length < totalGames) {
+    baseScores.push("");
+  }
+
+  return baseScores;
+}
+
+function collectSetScoresFromDom(setNumber) {
+  const cards = Array.from(document.querySelectorAll(`.match-card[data-set="${setNumber}"]`));
+
+  return cards.map(card => {
+    const inputs = card.querySelectorAll(".score-editable input");
+    if (inputs.length < 2) return "";
+
+    const a = String(inputs[0].value || "").trim();
+    const b = String(inputs[1].value || "").trim();
+
+    if (a === "" || b === "") {
+      return "";
+    }
+
+    return `${a}-${b}`;
+  });
+}
+
+async function loadCriticalPageData(pageId) {
+  if (pageId === "rankings") {
+    updateLoadingProgress(35, "Loading rankings...");
+
+    const [trend, history] = await Promise.all([
+      callAPI({ action: "getUserTrend" }, { force: true }),
+      callAPI({ action: "getHistory" }, { force: true })
+    ]);
+
+    globalData.trend = trend;
+    globalData.history = history;
+    historyCache = Array.isArray(history) ? history : [];
+
+    updateLoadingProgress(80, "Building rankings...");
+    await loadRankings({ skipAnalytics: true });
+    return;
+  }
+
+  if (pageId === "schedule") {
+    updateLoadingProgress(35, "Loading schedule...");
+    await loadSchedule();
+    return;
+  }
+
+  updateLoadingProgress(35, pageId === "sets" ? "Loading sets..." : "Loading today's sets...");
+
+  const sets = await callAPI({ action: "getTodaySets" }, { force: true });
+  globalData.sets = sets;
+
+  updateLoadingProgress(80, "Building sets...");
+  await loadTodaySetsAll();
+}
+
+function queueBackgroundStartup(pageId) {
+  setTimeout(async () => {
+    try {
+      renderGreeting();
+      renderPlayerOnboard();
+
+      if (!playersCache.length) {
+        await loadPlayers();
+      }
+
+      if (pageId === "rankings") {
+        await renderDashboardAnalytics(selectedPlayer);
+      }
+
+      const backgroundTasks = [];
+
+      if (!globalData.lastUpdated) {
+        backgroundTasks.push(
+          callAPI({ action: "lastUpdated" }, { force: true }).then(data => {
+            globalData.lastUpdated = data;
+          })
+        );
+      }
+
+      if (!globalData.trend) {
+        backgroundTasks.push(
+          callAPI({ action: "getUserTrend" }, { force: true }).then(data => {
+            globalData.trend = data;
+            return data;
+          })
+        );
+      }
+
+      if (!globalData.schedule && pageId !== "schedule") {
+        backgroundTasks.push(
+          callAPI({ action: "getSchedule" }, { force: true }).then(data => {
+            globalData.schedule = data;
+            return data;
+          })
+        );
+      }
+
+      if (!globalData.history && pageId !== "rankings") {
+        backgroundTasks.push(
+          callAPI({ action: "getHistory" }, { force: true }).then(data => {
+            globalData.history = data;
+            historyCache = Array.isArray(data) ? data : historyCache;
+            return data;
+          })
+        );
+      }
+
+      await Promise.all(backgroundTasks);
+
+      if (globalData.trend) {
+        getMorningWinPctSnapshot(globalData.trend);
+      }
+
+      if (pageId !== "rankings") {
+        loadRankings();
+      }
+
+      if (pageId !== "schedule") {
+        loadSchedule();
+      }
+
+      if (pageId !== "input" && pageId !== "sets") {
+        loadTodaySetsAll();
+      }
+
+      await checkIpWhitelist();
+      lockEditingIfNeeded();
+      trackVisitor();
+    } catch (err) {
+      console.error("Background startup failed:", err);
+    } finally {
+      appBootComplete = true;
+    }
+  }, 100);
+}
+
 async function checkIpWhitelist() {
   try {
     updateLoadingProgress(15, "Verifying access...");
@@ -117,32 +261,60 @@ async function checkIpWhitelist() {
 }
 
 function showAccessRestrictionPopup(ip) {
-  const container = document.getElementById("input");
-  if (!container) return;
+  // Add to input page
+  const inputContainer = document.getElementById("input");
+  if (inputContainer) {
+    const existingPopup = document.getElementById("accessRestrictionPopup-input");
+    if (existingPopup) existingPopup.remove();
 
-  const existingPopup = document.getElementById("accessRestrictionPopup");
-  if (existingPopup) existingPopup.remove();
-
-  const popup = document.createElement("div");
-  popup.id = "accessRestrictionPopup";
-  popup.className = "player-onboard";
-  popup.style.display = "flex";
-  popup.innerHTML = `
-    <div class="player-onboard-inner">
-      <div class="player-onboard-text">
-        <h3>⚠️ Editing Access Required</h3>
-        <p>You currently don't have editing access. Enter a code to proceed.</p>
-        <div style="margin-top: 15px;">
-          <input id="accessCode" type="password" placeholder="Enter access code" class="onboard-input" onkeypress="if(event.key==='Enter') verifyAccessCode()" />
-          <button onclick="verifyAccessCode()" style="margin-top: 10px; width: 100%; padding: 10px; background: #4fc3ff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: #000;">Unlock</button>
+    const popup = document.createElement("div");
+    popup.id = "accessRestrictionPopup-input";
+    popup.className = "player-onboard access-restriction-card";
+    popup.style.display = "block";
+    popup.innerHTML = `
+      <div class="player-onboard-inner">
+        <div class="player-onboard-text">
+          <h3>⚠️ Editing Access Required</h3>
+          <p>You currently don't have editing access. Enter a code to proceed.</p>
+          <div style="margin-top: 15px;">
+            <input id="accessCode" type="password" placeholder="Enter access code" class="onboard-input" onkeypress="if(event.key==='Enter') verifyAccessCode()" />
+            <button onclick="verifyAccessCode()" style="margin-top: 10px; width: 100%; padding: 10px; background: #4fc3ff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: #000;">Unlock</button>
+          </div>
+          <p style="font-size: 12px; color: #999; margin-top: 10px;">Your IP: ${ip}</p>
         </div>
-        <p style="font-size: 12px; color: #999; margin-top: 10px;">Your IP: ${ip}</p>
       </div>
-    </div>
-  `;
+    `;
 
-  container.insertBefore(popup, container.firstChild);
-  document.getElementById("accessCode").focus();
+    inputContainer.insertBefore(popup, inputContainer.firstChild);
+    document.getElementById("accessCode").focus();
+  }
+
+  // Add to schedule page
+  const scheduleContainer = document.getElementById("schedule");
+  if (scheduleContainer) {
+    const existingPopup = document.getElementById("accessRestrictionPopup-schedule");
+    if (existingPopup) existingPopup.remove();
+
+    const popup = document.createElement("div");
+    popup.id = "accessRestrictionPopup-schedule";
+    popup.className = "player-onboard access-restriction-card";
+    popup.style.display = "block";
+    popup.innerHTML = `
+      <div class="player-onboard-inner">
+        <div class="player-onboard-text">
+          <h3>⚠️ Editing Access Required</h3>
+          <p>You currently don't have editing access. Enter a code to proceed.</p>
+          <div style="margin-top: 15px;">
+            <input id="accessCodeSchedule" type="password" placeholder="Enter access code" class="onboard-input" onkeypress="if(event.key==='Enter') verifyAccessCode()" />
+            <button onclick="verifyAccessCode()" style="margin-top: 10px; width: 100%; padding: 10px; background: #4fc3ff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: #000;">Unlock</button>
+          </div>
+          <p style="font-size: 12px; color: #999; margin-top: 10px;">Your IP: ${ip}</p>
+        </div>
+      </div>
+    `;
+
+    scheduleContainer.insertBefore(popup, scheduleContainer.firstChild);
+  }
 }
 
 function verifyAccessCode() {
@@ -212,45 +384,33 @@ function lockEditingIfNeeded() {
 
 async function initApp() {
   if (appStartupPromise) return appStartupPromise;
+  updateLoadingProgress(5, "Preparing app...");
 
   appStartupPromise = (async () => {
-    trackVisitor();
-    updateLoadingProgress(5, "Checking access...");
-    await checkIpWhitelist();
 
     const loadedShared = await loadSharedResults();
     if (loadedShared) {
+      appBootComplete = true;
       hideLoadingScreen();
       return;
     }
 
-    updateLoadingProgress(20, "Loading players...");
+    const currentPage = getInitialPageFromPath();
+
+    updateLoadingProgress(15, "Loading players...");
     await loadPlayers();
-    
-    updateLoadingProgress(35, "Fetching data...");
-    await loadAllData(true);
+    await loadCriticalPageData(currentPage);
 
-    getMorningWinPctSnapshot(globalData.trend);
-
-    updateLoadingProgress(50, "Setting up page...");
-    const page = getInitialPageFromPath();
-    showPage(page);
-
-    updateLoadingProgress(65, "Loading today's sets...");
-    loadTodaySetsAll();
-    
-    updateLoadingProgress(75, "Preparing rankings...");
-    await Promise.all([loadRankings(), loadSchedule()]);
-
-    updateLoadingProgress(90, "Finishing up...");
-    renderGreeting();
-    renderPlayerOnboard();
-    lockEditingIfNeeded();
-    
-    updateLoadingProgress(100, "Ready!");
+    updateLoadingProgress(92, "Opening page...");
+    showPage(currentPage, { skipPageLoad: true, skipTracking: true });
+    updateLoadingProgress(100, "Ready");
     hideLoadingScreen();
+
+    queueBackgroundStartup(currentPage);
+
   })().catch(err => {
     appStartupPromise = null;
+    appBootComplete = false;
     throw err;
   });
 
@@ -472,8 +632,10 @@ function haptic() {
   if (navigator.vibrate) navigator.vibrate(10);
 }
 
-function showPage(id) {
-  trackVisitor();
+function showPage(id, options = {}) {
+  if (!options.skipTracking && appBootComplete) {
+    trackVisitor();
+  }
   document.querySelectorAll(".page").forEach(p => {
     p.classList.remove("active");
     p.style.display = "none";
@@ -494,6 +656,10 @@ function showPage(id) {
 
   document.getElementById("sideMenu").classList.remove("open");
  // document.getElementById("overlay").classList.remove("show");
+
+  if (options.skipPageLoad) {
+    return;
+  }
 
   if (id === "rankings") {
     requestAnimationFrame(() => loadRankings());
@@ -594,16 +760,16 @@ function renderSetsInto(container, data, opts = {}) {
       <div class="set-body"></div>
     `;
 
-    const games = ["G1", "G2", "G3"];
+    const games = getSetScores(match);
 
-    games.forEach((g, i) => {
+    games.forEach((scoreEntry, i) => {
       const key = `${match.set}-${i}`;
-      const score = optimisticUpdates[key] || match.scores?.[i] || "0-0";
+      const score = optimisticUpdates[key] ?? scoreEntry ?? "0-0";
       const isDirty = optimisticUpdates[key] !== undefined;
       let a = 0, b = 0;
 
-      const game1 = match.scores?.[0] || "";
-      const game2 = match.scores?.[1] || "";
+      const game1 = games[0] || "";
+      const game2 = games[1] || "";
 
       const isGame3Locked =
         !locked &&
@@ -633,7 +799,7 @@ function renderSetsInto(container, data, opts = {}) {
       const inputDisabled = locked || isGame3Locked;
 
       const matchCard = `
-        <div class="match-card ${isGame3Locked ? "locked" : ""} ${locked ? "day-locked-card" : ""}">
+        <div class="match-card ${isGame3Locked ? "locked" : ""} ${locked ? "day-locked-card" : ""}" data-set="${match.set}" data-game="${i}">
           <div class="left-content">
             <div class="team-row">
               <span class="team-names">${formatNames(match.teamA)}</span>
@@ -685,7 +851,9 @@ function renderSetsInto(container, data, opts = {}) {
 async function loadTodaySetsAll() {
   startTimer("Current Sets");
 
-  if (!globalData.sets) await loadAllData();
+  if (!globalData.sets) {
+    globalData.sets = await callAPI({ action: "getTodaySets" });
+  }
   const data = globalData.sets;
 
   endTimer("Current Sets");
@@ -736,29 +904,7 @@ async function saveSet(setNumber) {
   btn.disabled = true;
 
   try {
-    const scores = [];
-
-    for (let i = 0; i < 4; i++) {
-      // FIX: Select inputs directly that have the updateScore call
-      const inputs = document.querySelectorAll(
-        `.match-card input[oninput*="updateScore(${setNumber}, ${i},"]`
-      );
-
-      if (!inputs.length) {
-        scores.push("");
-        continue;
-      }
-
-      const a = inputs[0].value;
-      const b = inputs[1].value;
-
-      if (a === "" || b === "") {
-        scores.push("");
-        continue;
-      }
-
-      scores.push(`${a}-${b}`);
-    }
+    const scores = collectSetScoresFromDom(setNumber);
 
     // 🔥 SEND ONCE
     const res = await callAPI({
@@ -804,7 +950,7 @@ setTimeout(() => {
 function unlockGame(set, gameIndex) {
   if (isEditingLocked) return;
   
-  const inputs = document.querySelectorAll(`[data-set="${set}"][data-game="${gameIndex}"] input`);
+  const inputs = document.querySelectorAll(`.match-card[data-set="${set}"][data-game="${gameIndex}"] input`);
   inputs.forEach(i => {
     i.disabled = false;
     i.style.opacity = 1;
@@ -824,7 +970,12 @@ function addGame(setNumber, e) {
   const set = lastTodaySetsData.find(s => s.set === setNumber);
   if (!set) return;
 
-  const [g1, g2, g3] = set.scores || [];
+  if (!Array.isArray(set.scores)) {
+    set.scores = [];
+  }
+
+  const scores = getSetScores(set);
+  const [g1, g2] = scores;
 
   const isSweep =
     g1 && g2 &&
@@ -841,14 +992,31 @@ function addGame(setNumber, e) {
     return;
   }
 
-  // 🔥 CASE 2: add Game 4
+  const existingGameCount = collectSetScoresFromDom(setNumber).length || scores.length;
+  const nextIndex = Math.max(existingGameCount, scores.length);
+
+  if (scores[nextIndex] !== undefined) {
+    unlockGame(setNumber, nextIndex);
+    return;
+  }
+
+  set.scores[nextIndex] = "";
+  if (globalData.sets) {
+    const liveSet = globalData.sets.find(s => s.set === setNumber);
+    if (liveSet) {
+      if (!Array.isArray(liveSet.scores)) {
+        liveSet.scores = [];
+      }
+      liveSet.scores[nextIndex] = "";
+    }
+  }
+
+  // 🔥 CASE 2: add another game container
   const container = document.querySelector(`#save-btn-${setNumber}`).closest(".set-container");
   const body = container.querySelector(".set-body");
 
-  const index = 3; // game 4
-
   const html = `
-    <div class="match-card">
+    <div class="match-card" data-set="${setNumber}" data-game="${nextIndex}">
       <div class="left-content">
         <div class="team-row">
           <span class="team-names">${formatNames(set.teamA)}</span>
@@ -859,16 +1027,21 @@ function addGame(setNumber, e) {
 
       <div class="right-content">
         <div class="score-editable">
-          <input type="number" oninput="updateScore(${setNumber}, ${index}, this)">
-          <span>-</span>
-          <input type="number" oninput="updateScore(${setNumber}, ${index}, this)">
+          <input type="number" inputmode="numeric" oninput="updateScore(${setNumber}, ${nextIndex}, this)">
+          <span class="score-separator">-</span>
+          <input type="number" inputmode="numeric" oninput="updateScore(${setNumber}, ${nextIndex}, this)">
         </div>
-        <div class="meta-info">Game 4 • Set ${setNumber}</div>
+        <div class="meta-row">
+          <div class="meta-info">Game ${nextIndex + 1} • Set ${setNumber}</div>
+        </div>
+        <div id="status-${setNumber}-${nextIndex}"></div>
       </div>
     </div>
   `;
 
-  body.innerHTML += html;
+  body.insertAdjacentHTML("beforeend", html);
+  body.classList.add("open");
+  body.style.maxHeight = body.scrollHeight + "px";
 }
 
 
@@ -1446,7 +1619,7 @@ function getPlayerFromURL() {
   return params.get("p")?.toLowerCase();
 }
 
-async function loadRankings() {
+async function loadRankings(options = {}) {
   startTimer("Rankings Graph + Leaderboard");
   if (!globalData.trend) await loadAllData();
   const data = globalData.trend;
@@ -1494,9 +1667,11 @@ async function loadRankings() {
     if (!globalData.history) await loadAllData();
     historyCache = globalData.history;
   }
-  startTimer("Analytics");
-  renderDashboardAnalytics(selectedPlayer);
-  endTimer("Analytics");
+  if (!options.skipAnalytics) {
+    startTimer("Analytics");
+    await renderDashboardAnalytics(selectedPlayer);
+    endTimer("Analytics");
+  }
 
   const rank = sorted.findIndex(p => p.name === player.name) + 1;
   document.getElementById("topPercent").innerText =
@@ -1516,9 +1691,18 @@ async function loadRankings() {
   const values = playerHistory.map(x => x.value);
 
   const latest = values[values.length - 1] || 50;
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
 
-  const max = latest + 8;
-  const min = latest - 8;
+  // Calculate dynamic margins - if data exceeds ±8, expand range
+  let margin = 8;
+  const rangeFromLatest = Math.max(Math.abs(latest - dataMin), Math.abs(dataMax - latest));
+  if (rangeFromLatest > margin) {
+    margin = Math.ceil(rangeFromLatest * 1.15); // Add 15% buffer
+  }
+
+  const max = latest + margin;
+  const min = latest - margin;
 
   const chartEl = document.getElementById("chart");
   if (!chartEl) return;
@@ -2146,70 +2330,94 @@ function toggleMenu() {
 
 
 function openShare() {
-  const wrap = document.getElementById("playerOnboard");
+  const wrap = document.getElementById("shareModal");
   if (!wrap) return;
 
-wrap.style.display = "block";
-wrap.innerHTML = `
-  <div class="player-onboard-inner card">
-    <p class="player-onboard-text">Who do you want to share this with?</p>
-
-    <div class="onboard-input-wrap">
-      <input type="text" id="shareInput" class="onboard-input" placeholder="Start typing a name">
+  wrap.style.display = "flex";
+  wrap.innerHTML = `
+    <div class="share-modal-overlay" onclick="closeShare()"></div>
+    <div class="share-modal-content card">
+      <div class="share-modal-header">
+        <h3>Share Results</h3>
+        <button class="close-btn" onclick="closeShare()">✕</button>
+      </div>
+      <p class="share-modal-text">Who do you want to share with?</p>
+      <div class="onboard-input-wrap">
+        <input type="text" id="sharePlayerInput" class="onboard-input" placeholder="Start typing a name" autocomplete="off">
+      </div>
+      <button onclick="closeShare()" style="margin-top:10px; width:100%;">Cancel</button>
     </div>
+  `;
 
-    <button onclick="closeShare()" style="margin-top:10px;">Cancel</button>
-  </div>
-`;
+  const input = document.getElementById("sharePlayerInput");
+  if (input) {
+    setTimeout(() => input.focus(), 100);
+    attachShareAutocomplete(input);
+  }
+}
 
-  const input = document.getElementById("shareInput");
+function attachShareAutocomplete(input) {
+  let dropdown = input.closest(".onboard-input-wrap")?.querySelector(".autocomplete");
+  const wrap = input.closest(".onboard-input-wrap");
+  if (!wrap) return;
 
-  attachOnboardAutocomplete(input, (selectedName) => {
-    triggerShare(selectedName);
+  if (!dropdown) {
+    dropdown = document.createElement("div");
+    dropdown.className = "autocomplete onboard-autocomplete-el";
+    wrap.appendChild(dropdown);
+  }
+
+  input.addEventListener("input", () => {
+    const val = input.value.toLowerCase();
+    dropdown.innerHTML = playersCache
+      .filter(p => p.name.toLowerCase().includes(val))
+      .slice(0, 8)
+      .map(p => `<div class="auto-item">${capitalize(p.name)}</div>`)
+      .join("");
+    dropdown.querySelectorAll(".auto-item").forEach(el => {
+      el.onclick = () => {
+        const picked = el.innerText.trim();
+        triggerShareLink(picked);
+      };
+    });
+  });
+
+  input.addEventListener("blur", () => {
+    setTimeout(() => { dropdown.innerHTML = ""; }, 200);
   });
 }
 
-function triggerShare(name) {
+function triggerShareLink(name) {
   if (!name) return;
-
-  const player =
-    selectedPlayer ||
-    new URLSearchParams(window.location.search).get("p") ||
-    localStorage.getItem("player");
-
-  const url = `https://maxhydell.github.io/pbTracker/?page=input&p=${player}`;
-
-  const message = `${capitalize(name)}, check this out: ${url}`;
-
-  // 📱 iPhone (your shortcut system)
-  const phonePlayer = playersCache.find(p =>
-    p.name.toLowerCase() === name.toLowerCase()
-  );
-
-  if (phonePlayer?.phone) {
-    const phone = phonePlayer.phone.startsWith("+1")
-      ? phonePlayer.phone
-      : "+1" + phonePlayer.phone.replace(/\D/g, "");
-
-    const payload = `${phone}|${message}`;
-    const link = `shortcuts://run-shortcut?name=SMS&input=text&text=${encodeURIComponent(payload)}`;
-
-    window.location.href = link;
-  } else {
-    // fallback → copy
-    navigator.clipboard.writeText(message);
-    alert("Message copied!");
-  }
-
-  closeShare();
+  
+  const shareUrl = `https://pbtrkr.app/share/?p=${name.toLowerCase()}`;
+  
+  navigator.clipboard.writeText(shareUrl).then(() => {
+    // Show success message
+    const modal = document.getElementById("shareModal");
+    const content = modal.querySelector(".share-modal-content");
+    
+    content.innerHTML = `
+      <div class="share-modal-header">
+        <h3>Link Copied!</h3>
+      </div>
+      <p style="text-align: center; font-size: 16px; margin: 20px 0;">✅ Link copied to clipboard</p>
+      <p style="text-align: center; font-size: 14px; color: #666;">${shareUrl}</p>
+    `;
+    
+    setTimeout(() => {
+      closeShare();
+    }, 1500);
+  }).catch(err => {
+    alert("Failed to copy link");
+  });
 }
 
 function closeShare() {
-  const wrap = document.getElementById("playerOnboard");
+  const wrap = document.getElementById("shareModal");
   if (!wrap) return;
-
-  wrap.innerHTML = "";
   wrap.style.display = "none";
+  wrap.innerHTML = "";
 }
 
 
@@ -2434,7 +2642,7 @@ function openBestPartner(player, stats) {
     ["Name","Best Partner","Win %"],
     rows,
     player,
-    { noHighlight: true }
+    { highlightFirstRow: true }
   );
 }
 function openHardestOpponent(player, stats) {
@@ -2454,7 +2662,7 @@ function openHardestOpponent(player, stats) {
     ["Name","Opponent","Win %"],
     rows,
     player,
-    { noHighlight: true }
+    { highlightFirstRow: true }
   );
 }
 function openLosingStreak(stats, selectedPlayer) {
@@ -2885,6 +3093,11 @@ function closeAnalyticsPanel(buttonEl) {
 }
 
 function analyticsRowHighlightClass(r, selectedPlayer, opts) {
+  // Highlight first row in blue if requested
+  if (opts.highlightFirstRow && opts._isFirstRow) {
+    return "highlight-blue";
+  }
+  
   if (opts.noHighlight || selectedPlayer == null || selectedPlayer === "") return "";
   const sp = String(selectedPlayer).toLowerCase();
   const rn = (r.name != null ? String(r.name) : "").toLowerCase();
@@ -2897,8 +3110,13 @@ function showAnalyticsModal(title, columns, rows, selectedPlayer, opts = {}) {
   const container = getAnalyticsTablesContainer();
   if (!container) return;
   const esc = escapeHtml;
+  
+  // Calculate z-index based on how many panels are already open
+  const existingPanels = container.querySelectorAll(".analytics-table-panel");
+  const zIndex = 100 + existingPanels.length;
+  
   const body = `
-    <div class="analytics-table-panel">
+    <div class="analytics-table-panel" style="z-index: ${zIndex};">
       <div class="analytics-table-head">
         <h3 class="global-analytics-modal__title">${esc(title)}</h3>
         <button type="button" class="global-analytics-modal__close" onclick="closeAnalyticsPanel(this)" aria-label="Close">&times;</button>
@@ -2908,14 +3126,15 @@ function showAnalyticsModal(title, columns, rows, selectedPlayer, opts = {}) {
           ${columns.map(c => `<span>${esc(c)}</span>`).join("")}
         </div>
         ${rows
-          .map(
-            r => `
-        <div class="leaderboard-row ${analyticsRowHighlightClass(r, selectedPlayer, opts)}">
+          .map((r, idx) => {
+            const rowOpts = { ...opts, _isFirstRow: idx === 0 };
+            return `
+        <div class="leaderboard-row ${analyticsRowHighlightClass(r, selectedPlayer, rowOpts)}">
           ${Object.values(r)
             .map(v => `<span>${esc(String(v))}</span>`)
             .join("")}
-        </div>`
-          )
+        </div>`;
+          })
           .join("")}
       </div>
     </div>
@@ -3425,18 +3644,13 @@ async function trackVisitor() {
       userAgent: navigator.userAgent
     };
 
-    console.log("👀 Visitor:", visitor);
-
     // 🔥 SEND TO SUPABASE
     if (window.supabaseClient) {
       const { error } = await window.supabaseClient
         .from("visitors")
         .insert([visitor]);
-
-      if (error) console.error("❌ Supabase error:", error);
     }
 
   } catch (err) {
-    console.error("❌ Tracking error:", err);
   }
 }
