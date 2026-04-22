@@ -90,11 +90,6 @@ function hideLoadingScreen() {
 
 async function checkIpWhitelist() {
   try {
-    if (localStorage.getItem(LS_IP_VERIFIED)) {
-      userIp = localStorage.getItem(LS_USER_IP);
-      return;
-    }
-
     updateLoadingProgress(15, "Verifying access...");
     
     userIp = await getVisitorIp();
@@ -104,13 +99,16 @@ async function checkIpWhitelist() {
     
     if (!isWhitelisted) {
       isEditingLocked = true;
+      console.warn("⚠️ IP NOT WHITELISTED:", userIp);
       
       // Show access restriction popup after app loads
       setTimeout(() => {
         showAccessRestrictionPopup(userIp);
       }, 500);
     } else {
+      isEditingLocked = false;
       localStorage.setItem(LS_IP_VERIFIED, "1");
+      console.log("✅ IP WHITELISTED:", userIp);
     }
 
   } catch (err) {
@@ -151,16 +149,34 @@ function verifyAccessCode() {
   const codeInput = document.getElementById("accessCode");
   const code = codeInput.value.trim();
 
-  // Simple code verification (can be enhanced)
-  const correctCode = "1234"; // Replace with your actual code
+  // Access code verification
+  const correctCode = "ymcapickle";
   
   if (code === correctCode) {
     localStorage.setItem(LS_IP_VERIFIED, "1");
     isEditingLocked = false;
-    document.getElementById("accessRestrictionPopup").remove();
+    const popup = document.getElementById("accessRestrictionPopup");
+    if (popup) popup.remove();
     console.log("✅ Access unlocked");
+    
+    // Unlock editing
+    const setInputs = document.querySelectorAll(".score-editable input, .player-input");
+    const buttons = document.querySelectorAll(".set-save-btn, #scheduleSaveBtn, #doneBtn");
+    
+    setInputs.forEach(input => {
+      input.disabled = false;
+      input.style.opacity = "1";
+      input.style.cursor = "pointer";
+    });
+    
+    buttons.forEach(btn => {
+      btn.disabled = false;
+      btn.style.opacity = "1";
+      btn.style.cursor = "pointer";
+    });
   } else {
     codeInput.style.border = "2px solid #dc2626";
+    codeInput.value = "";
     setTimeout(() => {
       codeInput.style.border = "";
     }, 2000);
@@ -170,21 +186,28 @@ function verifyAccessCode() {
 function lockEditingIfNeeded() {
   if (!isEditingLocked) return;
 
+  console.log("🔒 LOCKING EDITING - IP NOT WHITELISTED");
+
   // Lock all editing controls
-  const setInputs = document.querySelectorAll(".score-editable input, .player-input, .match-card");
-  const buttons = document.querySelectorAll(".set-save-btn, #scheduleSaveBtn, #doneBtn");
+  const setInputs = document.querySelectorAll(".score-editable input, .player-input, .match-card input");
+  const buttons = document.querySelectorAll(".set-save-btn, #scheduleSaveBtn, #doneBtn, .sms-btn, .check-btn");
   
   setInputs.forEach(input => {
     input.disabled = true;
     input.style.opacity = "0.5";
     input.style.cursor = "not-allowed";
+    input.style.pointerEvents = "none";
   });
 
   buttons.forEach(btn => {
     btn.disabled = true;
     btn.style.opacity = "0.5";
     btn.style.cursor = "not-allowed";
+    btn.style.pointerEvents = "none";
   });
+
+  // Prevent score updates
+  window.isEditingLocked = true;
 }
 
 async function initApp() {
@@ -701,6 +724,11 @@ function restoreResultsIfAny() {
 
 
 async function saveSet(setNumber) {
+  if (isEditingLocked) {
+    alert("⚠️ Editing is locked. Enter the access code to proceed.");
+    return;
+  }
+  
   const btn = document.getElementById(`save-btn-${setNumber}`);
   if (!btn) return;
 
@@ -774,6 +802,8 @@ setTimeout(() => {
 }
 
 function unlockGame(set, gameIndex) {
+  if (isEditingLocked) return;
+  
   const inputs = document.querySelectorAll(`[data-set="${set}"][data-game="${gameIndex}"] input`);
   inputs.forEach(i => {
     i.disabled = false;
@@ -784,6 +814,11 @@ function unlockGame(set, gameIndex) {
 
 
 function addGame(setNumber, e) {
+  if (isEditingLocked) {
+    alert("⚠️ Editing is locked. Enter the access code to proceed.");
+    return;
+  }
+  
   e.stopPropagation();
 
   const set = lastTodaySetsData.find(s => s.set === setNumber);
@@ -887,6 +922,11 @@ function toggleSet(el) {
 
 
 function sendSMS(btn, date, col) {
+  if (isEditingLocked) {
+    alert("⚠️ Editing is locked. Enter the access code to proceed.");
+    return;
+  }
+  
   const input = btn.parentElement.querySelector("input");
   const name = (input.value || "").trim();
   if (!name) return alert("Enter a name first");
@@ -977,6 +1017,11 @@ async function addPlayerPrompt() {
 
 
 function toggleCheck(btn, date, col) {
+  if (isEditingLocked) {
+    alert("⚠️ Editing is locked. Enter the access code to proceed.");
+    return;
+  }
+  
   const input = btn.parentElement.querySelector("input");
   const currentName = (input?.value || "").trim();
 
@@ -1145,6 +1190,11 @@ function setBookCourtDone(date) {
 }
 
 function bookCourt(date, button) {
+  if (isEditingLocked) {
+    alert("⚠️ Editing is locked. Enter the access code to proceed.");
+    return;
+  }
+  
   console.log("🎾 Book Court clicked", { date });
   setBookCourtDone(date);
   if (button) {
@@ -1566,6 +1616,8 @@ async function ultraSmartRefresh() {
 }
 
 function unlockPlayer(btn, date, col) {
+  if (isEditingLocked) return;
+  
   const slot = btn.parentElement;
   const input = slot.querySelector("input");
 
@@ -1746,6 +1798,11 @@ function buildResultsHtml(standings, morningPcts, afterTrend) {
 }
 
 async function finishDay() {
+  if (isEditingLocked) {
+    alert("⚠️ Editing is locked. Enter the access code to proceed.");
+    return;
+  }
+  
   console.log("🏁 finishDay clicked");
 
   // 🔥 1. SNAPSHOT BEFORE
@@ -2241,6 +2298,7 @@ let scoreTimeout;
 
 function updateScore(set, gameIndex, input) {
   if (isDayComplete()) return;
+  if (isEditingLocked) return;
 
   clearTimeout(scoreTimeout);
 
@@ -2538,6 +2596,11 @@ function updateSaveButton() {
 
 
 async function saveScheduleChanges() {
+  if (isEditingLocked) {
+    alert("⚠️ Editing is locked. Enter the access code to proceed.");
+    return;
+  }
+  
   if (!scheduleDirty) return;
 
   console.log("💾 Saving FULL schedule");
