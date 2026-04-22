@@ -532,6 +532,14 @@ h1, h2 {
   text-align: center;
 }
 
+.day-win-pct {
+  font-size: 11px;
+  font-weight: 700;
+  color: #4fc3ff;
+  text-align: center;
+  min-width: 28px;
+}
+
 .day-players {
   font-size: 12px;
   color: #aaa;
@@ -1063,6 +1071,34 @@ select.dash-player-select option,
   animation-delay: 0.8s;
 }
 
+.loading-progress {
+  position: absolute;
+  bottom: 60px;
+  width: 200px;
+  height: 3px;
+  background: rgba(79, 195, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #4fc3ff, #00c853);
+  width: 0%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 10px rgba(79, 195, 255, 0.5);
+}
+
+.progress-text {
+  position: absolute;
+  bottom: 35px;
+  font-size: 12px;
+  color: rgba(79, 195, 255, 0.7);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
 /* =========================
    ANIMATIONS
 ========================= */
@@ -1184,6 +1220,42 @@ select.dash-player-select option,
   padding: 12px;
   border-radius: 10px;
   border: none;
+}
+
+#accessRestrictionPopup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10000;
+}
+
+#accessRestrictionPopup .player-onboard-text h3 {
+  color: #ff9800;
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+#accessRestrictionPopup .player-onboard-text p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+#accessCode {
+  width: 100% !important;
+  padding: 12px !important;
+  border-radius: 8px !important;
+  border: 2px solid #4fc3ff !important;
+  font-size: 14px;
+  color: #fff;
+  background: rgba(79, 195, 255, 0.05);
+  margin-top: 10px !important;
+}
+
+#accessCode:focus {
+  outline: none;
+  border-color: #00c853 !important;
+  background: rgba(79, 195, 255, 0.1);
 }
 
 /* rankings analytics */

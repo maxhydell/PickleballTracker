@@ -574,54 +574,110 @@ function updateSchedulePartial(data) {
 
 
 function handleGamesWeb() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  Logger.log("🎮 ==================== handleGamesWeb() CALLED ====================");
+  
+  // 🔒 USE LOCK TO PREVENT RACE CONDITIONS (concurrent calls)
+  const lock = LockService.getScriptLock();
+  let hasLock = false;
+  
+  try {
+    lock.waitLock(5000);
+    hasLock = true;
 
-  const scheduleSheet = ss.getSheetByName(SHEET_SCHEDULE);
-  const setsSheet = ss.getSheetByName(SHEET_SETS);
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
-  if (!scheduleSheet || !setsSheet) {
-    Logger.log("❌ Missing schedule or sets sheet");
-    return;
-  }
+    const scheduleSheet = ss.getSheetByName("Schedule");
+    const setsSheet = ss.getSheetByName("Sets");
 
+    if (!scheduleSheet || !setsSheet) {
+      Logger.log("❌ Missing schedule or sets sheet");
+      return;
+    }
 
-  const todayStr = new Date().toDateString();
-  const scheduleData = scheduleSheet.getDataRange().getValues();
+    const tz = Session.getScriptTimeZone();
+    const todayStr = Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
+    Logger.log("🔍 Looking for today's date: " + todayStr);
+    
+    const scheduleData = scheduleSheet.getDataRange().getValues();
+    Logger.log("📊 Total rows in schedule: " + scheduleData.length);
 
-  let players = null;
+    let players = null;
 
-  for (let i = 1; i < scheduleData.length; i++) {
-    if (new Date(scheduleData[i][0]).toDateString() === todayStr) {
-      players = scheduleData[i].slice(2, 6);
-      break;
+    for (let i = 1; i < scheduleData.length; i++) {
+      if (!scheduleData[i][0]) continue;
+      
+      const rawDate = scheduleData[i][0];
+      Logger.log("📋 Row " + i + ": date='" + rawDate + "' (type: " + typeof rawDate + ")");
+      
+      let scheduleDate;
+      try {
+        // Try to format the date - works for both Date objects and can handle strings
+        scheduleDate = Utilities.formatDate(new Date(rawDate), tz, "yyyy-MM-dd");
+      } catch (e) {
+        Logger.log("   ⚠️ Error parsing date: " + e);
+        continue;
+      }
+      Logger.log("   Formatted: '" + scheduleDate + "' vs Expected: '" + todayStr + "' | Match: " + (scheduleDate === todayStr));
+      
+      if (scheduleDate === todayStr) {
+        const rawPlayers = scheduleData[i].slice(2, 6);
+        Logger.log("   Raw players from cols C-F: " + JSON.stringify(rawPlayers));
+        players = rawPlayers.filter(Boolean);
+        Logger.log("   ✅ MATCH FOUND at row " + i + " - Filtered Players (" + players.length + "): " + JSON.stringify(players));
+        break;
+      }
+    }
+
+    if (!players || players.length < 4) {
+      Logger.log("⚠️ Not enough players found: " + (players ? players.length : 0));
+      if (players) {
+        Logger.log("   Players array: " + JSON.stringify(players));
+        Logger.log("   After filter(Boolean): " + JSON.stringify(players.filter(Boolean)));
+      }
+      return;
+    }
+    
+    Logger.log("✅ Have 4+ players: " + JSON.stringify(players));
+
+    // 🚨 RE-CHECK for duplicates AFTER acquiring lock (critical!)
+    Logger.log("🔒 Lock acquired - rechecking for existing sets...");
+    const setsData = setsSheet.getDataRange().getValues();
+    const existing = setsData.some(r => {
+      if (!r[0]) return false;
+      const setsDate = Utilities.formatDate(new Date(r[0]), tz, "yyyy-MM-dd");
+      return setsDate === todayStr;
+    });
+
+    if (existing) {
+      Logger.log("✅ Sets already exist for today (found after lock acquired)");
+      return;
+    }
+
+    Logger.log("🔥 Generating sets for today");
+
+    const now = Utilities.formatDate(
+      new Date(),
+      tz,
+      "M/d/yyyy H:mm:ss"
+    );
+
+    const rows = [
+      [now, 1, `${players[0]} / ${players[1]}`, `${players[2]} / ${players[3]}`, "", "", ""],
+      [now, 2, `${players[0]} / ${players[3]}`, `${players[2]} / ${players[1]}`, "", "", ""],
+      [now, 3, `${players[0]} / ${players[2]}`, `${players[3]} / ${players[1]}`, "", "", ""]
+    ];
+
+    const startRow = setsSheet.getLastRow() + 1;
+
+    setsSheet.getRange(startRow, 1, rows.length, rows[0].length)
+      .setValues(rows);
+
+    Logger.log("✅ Sets generated successfully");
+  } finally {
+    if (hasLock) {
+      lock.releaseLock(); // 🔓 ALWAYS release the lock
     }
   }
-
-  if (!players || players.length < 4) return;
-
-  // 🚨 prevent duplicates
-  const existing = setsSheet.getDataRange().getValues().some(r =>
-    new Date(r[0]).toDateString() === todayStr
-  );
-
-  if (existing) return;
-
-  const now = Utilities.formatDate(
-    new Date(),
-    Session.getScriptTimeZone(),
-    "M/d/yyyy H:mm:ss"
-  );
-
-  const rows = [
-    [now, 1, `${players[0]} / ${players[1]}`, `${players[2]} / ${players[3]}`, "", "", ""],
-    [now, 2, `${players[0]} / ${players[3]}`, `${players[2]} / ${players[1]}`, "", "", ""],
-    [now, 3, `${players[0]} / ${players[2]}`, `${players[3]} / ${players[1]}`, "", "", ""]
-  ];
-
-  const startRow = setsSheet.getLastRow() + 1;
-
-  setsSheet.getRange(startRow, 1, rows.length, rows[0].length)
-    .setValues(rows);
 }
 
 // ===== GET TODAY'S SETS =====
@@ -668,23 +724,20 @@ return rowStr === todayStr;
 }
 
 function ensureTodayGames() {
-  const sets = getTodaySets();
-
-  if (sets.length > 0) return;
-
-  // 🔥 PREVENT DUPLICATE GENERATION
-  const props = PropertiesService.getScriptProperties();
-  const today = new Date().toDateString();
-  const key = "gamesGenerated_" + today;
+  Logger.log("🔄 ensureTodayGames() called");
   
-  if (props.getProperty(key)) {
-    Logger.log("✅ Games already generated today, skipping");
+  const sets = getTodaySets();
+  Logger.log("   getTodaySets() returned: " + sets.length + " sets");
+
+  if (sets.length > 0) {
+    Logger.log("   ✅ Sets already exist, skipping generation");
     return;
   }
+
+  Logger.log("   ⚠️ No sets found for today, calling handleGamesWeb()...");
   
-  // Mark that we're generating games
-  props.setProperty(key, "1");
-  
+  // 🔥 Call handleGamesWeb to generate if players exist in schedule
+  // handleGamesWeb has its own duplicate prevention logic
   handleGamesWeb();
 }
 
@@ -725,11 +778,11 @@ function submitScore(data) {
 
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
-  const sheet = ss.getSheetByName(SHEET_SETS);
+  const sheet = ss.getSheetByName("Sets");
   const rankingsSheet = ss.getSheetByName("Rankings");
 
   if (!sheet) {
-    Logger.log("❌ Sets sheet not found: " + SHEET_SETS);
+    Logger.log("❌ Sets sheet not found: Sets");
   return { error: "Sets sheet missing" };
   }
 
@@ -1090,30 +1143,16 @@ function getPreviousHistoryEntry(data) {
 
   const playerName = (data.name || "").trim().toLowerCase();
   const allRows = sheet.getDataRange().getValues();
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Find all entries for this player that are NOT from today
-  const playerEntries = [];
   for (let i = allRows.length - 1; i >= 1; i--) {
     const rowName = (allRows[i][1] || "").trim().toLowerCase();
-    const rowDate = new Date(allRows[i][0]);
-    rowDate.setHours(0, 0, 0, 0);
 
-    if (rowName === playerName && rowDate.getTime() < today.getTime()) {
-      playerEntries.push({
-        date: rowDate,
+    if (rowName === playerName) {
+      return {
+        date: allRows[i][0],
         winPct: Number(allRows[i][2]) || 0,
         pointsAvg: Number(allRows[i][3]) || 0
-      });
-      // Only need the most recent previous entry
-      break;
+      };
     }
-  }
-
-  if (playerEntries.length > 0) {
-    return playerEntries[0];
   }
 
   return { winPct: 0, pointsAvg: 0 };
@@ -1189,7 +1228,7 @@ function getUserTrend() {
 // ===== SCHEDULE =====
 function getSchedule() {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID)
-    .getSheetByName(SHEET_SCHEDULE);
+    .getSheetByName("Schedule");
 
   const data = sheet.getDataRange().getValues();
 
@@ -1331,7 +1370,7 @@ function updateSchedule(data) {
       if (new Date(date).toDateString() === today) {
 
         const setsSheet = SpreadsheetApp.openById(SPREADSHEET_ID)
-          .getSheetByName(SHEET_SETS);
+          .getSheetByName("Sets");
 
         const all = setsSheet.getDataRange().getValues();
 

@@ -19,6 +19,8 @@ const LS_DAY_COMPLETE = "pbTracker_dayComplete";
 const LS_PLAYER_PREF = "pbTracker_playerPref_v1";
 const LS_MORNING_WINPCT = "pbTracker_morningWinPct";
 const LS_SCHEDULE_WEEK_ANCHOR = "pbTracker_scheduleWeekAnchor_v1";
+const LS_USER_IP = "pbTracker_userIp_v1";
+const LS_IP_VERIFIED = "pbTracker_ipVerified_v1";
 
 let scheduleDirty = false;
 let pendingScheduleChanges = [];
@@ -33,7 +35,14 @@ let globalData = {
   lastUpdated: null
 };
 
-
+let userIp = null;
+let isEditingLocked = false;
+let loadingProgress = 0;
+let rankingsComponentsReady = false;
+const WHITELISTED_IPS = [
+  "73.148.150.212",
+  "2603:3010:1732:d600:9895:4ad6:9f4f:40c"
+];
 
 window.loadedShared = false;
 let lastMetaSeen = null;
@@ -54,6 +63,19 @@ function endTimer(name) {
   console.timeEnd(`⏱️ ${name}`);
 }
 
+function updateLoadingProgress(percent, text) {
+  loadingProgress = Math.min(100, Math.max(loadingProgress, percent));
+  const progressBar = document.getElementById("progressBar");
+  const progressText = document.getElementById("progressText");
+  
+  if (progressBar) {
+    progressBar.style.width = loadingProgress + "%";
+  }
+  if (progressText && text) {
+    progressText.textContent = text;
+  }
+}
+
 function hideLoadingScreen() {
   const loader = document.getElementById("loading-screen");
   if (!loader) return;
@@ -66,30 +88,143 @@ function hideLoadingScreen() {
   }, 400);
 }
 
+async function checkIpWhitelist() {
+  try {
+    if (localStorage.getItem(LS_IP_VERIFIED)) {
+      userIp = localStorage.getItem(LS_USER_IP);
+      return;
+    }
+
+    updateLoadingProgress(15, "Verifying access...");
+    
+    userIp = await getVisitorIp();
+    localStorage.setItem(LS_USER_IP, userIp || "unknown");
+
+    const isWhitelisted = userIp && WHITELISTED_IPS.includes(userIp);
+    
+    if (!isWhitelisted) {
+      isEditingLocked = true;
+      
+      // Show access restriction popup after app loads
+      setTimeout(() => {
+        showAccessRestrictionPopup(userIp);
+      }, 500);
+    } else {
+      localStorage.setItem(LS_IP_VERIFIED, "1");
+    }
+
+  } catch (err) {
+    console.error("❌ IP check error:", err);
+  }
+}
+
+function showAccessRestrictionPopup(ip) {
+  const container = document.getElementById("input");
+  if (!container) return;
+
+  const existingPopup = document.getElementById("accessRestrictionPopup");
+  if (existingPopup) existingPopup.remove();
+
+  const popup = document.createElement("div");
+  popup.id = "accessRestrictionPopup";
+  popup.className = "player-onboard";
+  popup.style.display = "flex";
+  popup.innerHTML = `
+    <div class="player-onboard-inner">
+      <div class="player-onboard-text">
+        <h3>⚠️ Editing Access Required</h3>
+        <p>You currently don't have editing access. Enter a code to proceed.</p>
+        <div style="margin-top: 15px;">
+          <input id="accessCode" type="password" placeholder="Enter access code" class="onboard-input" onkeypress="if(event.key==='Enter') verifyAccessCode()" />
+          <button onclick="verifyAccessCode()" style="margin-top: 10px; width: 100%; padding: 10px; background: #4fc3ff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: #000;">Unlock</button>
+        </div>
+        <p style="font-size: 12px; color: #999; margin-top: 10px;">Your IP: ${ip}</p>
+      </div>
+    </div>
+  `;
+
+  container.insertBefore(popup, container.firstChild);
+  document.getElementById("accessCode").focus();
+}
+
+function verifyAccessCode() {
+  const codeInput = document.getElementById("accessCode");
+  const code = codeInput.value.trim();
+
+  // Simple code verification (can be enhanced)
+  const correctCode = "1234"; // Replace with your actual code
+  
+  if (code === correctCode) {
+    localStorage.setItem(LS_IP_VERIFIED, "1");
+    isEditingLocked = false;
+    document.getElementById("accessRestrictionPopup").remove();
+    console.log("✅ Access unlocked");
+  } else {
+    codeInput.style.border = "2px solid #dc2626";
+    setTimeout(() => {
+      codeInput.style.border = "";
+    }, 2000);
+  }
+}
+
+function lockEditingIfNeeded() {
+  if (!isEditingLocked) return;
+
+  // Lock all editing controls
+  const setInputs = document.querySelectorAll(".score-editable input, .player-input, .match-card");
+  const buttons = document.querySelectorAll(".set-save-btn, #scheduleSaveBtn, #doneBtn");
+  
+  setInputs.forEach(input => {
+    input.disabled = true;
+    input.style.opacity = "0.5";
+    input.style.cursor = "not-allowed";
+  });
+
+  buttons.forEach(btn => {
+    btn.disabled = true;
+    btn.style.opacity = "0.5";
+    btn.style.cursor = "not-allowed";
+  });
+}
+
 async function initApp() {
   if (appStartupPromise) return appStartupPromise;
 
   appStartupPromise = (async () => {
     trackVisitor();
+    updateLoadingProgress(5, "Checking access...");
+    await checkIpWhitelist();
+
     const loadedShared = await loadSharedResults();
     if (loadedShared) {
       hideLoadingScreen();
       return;
     }
 
+    updateLoadingProgress(20, "Loading players...");
     await loadPlayers();
+    
+    updateLoadingProgress(35, "Fetching data...");
     await loadAllData(true);
 
     getMorningWinPctSnapshot(globalData.trend);
 
+    updateLoadingProgress(50, "Setting up page...");
     const page = getInitialPageFromPath();
     showPage(page);
 
+    updateLoadingProgress(65, "Loading today's sets...");
     loadTodaySetsAll();
+    
+    updateLoadingProgress(75, "Preparing rankings...");
     await Promise.all([loadRankings(), loadSchedule()]);
 
+    updateLoadingProgress(90, "Finishing up...");
     renderGreeting();
     renderPlayerOnboard();
+    lockEditingIfNeeded();
+    
+    updateLoadingProgress(100, "Ready!");
     hideLoadingScreen();
   })().catch(err => {
     appStartupPromise = null;
@@ -1142,10 +1277,20 @@ data = Array.from({ length: 5 }, (_, i) => {
 
       const allConfirmed = row.status && row.status.every(s => s == 2);
 
+      // 🔥 Calculate average win% for the day
+      const dayWinPcts = row.players
+        .map(p => getWinPct(p))
+        .filter(v => v > 0);
+      
+      const dayAvgWinPct = dayWinPcts.length
+        ? Math.round(dayWinPcts.reduce((a, b) => a + b, 0) / dayWinPcts.length * 100)
+        : 0;
+
       return `
         <div class="day-card ${allConfirmed ? "day-complete" : ""}" data-date="${row.date}">
           <div class="day-header" onclick="toggleSet(this)">
             <div class="day-name">${dayName}</div>
+            <div class="day-win-pct">${dayAvgWinPct}%</div>
 
             ${i === topDayIndex ? `<div class="tag">Top Day</div>` : ""}
 
@@ -1284,6 +1429,15 @@ async function loadRankings() {
   const bigStatEl = document.getElementById("bigStat");
   if (bigStatEl) {
     bigStatEl.innerText = formatWinPctDisplay(player.winPct);
+    
+    // 🔥 EARLY EXIT FOR RANKINGS PAGE
+    if (!rankingsComponentsReady && document.getElementById("rankings")?.classList.contains("active")) {
+      rankingsComponentsReady = true;
+      updateLoadingProgress(95, "Loading complete...");
+      setTimeout(() => {
+        hideLoadingScreen();
+      }, 200);
+    }
   }
 
   if (!historyCache.length) {
@@ -1484,6 +1638,15 @@ function renderLeaderboard(data) {
   setTimeout(() => {
     container.innerHTML = html;
     container.style.opacity = "1";
+    
+    // 🔥 EARLY EXIT FOR RANKINGS PAGE
+    if (!rankingsComponentsReady && document.getElementById("rankings")?.classList.contains("active")) {
+      rankingsComponentsReady = true;
+      updateLoadingProgress(95, "Loading complete...");
+      setTimeout(() => {
+        hideLoadingScreen();
+      }, 100);
+    }
   }, 100);
 }
 
@@ -3157,16 +3320,40 @@ window.addEventListener("beforeunload", function (e) {
 // ===============================
 // 🔥 VISITOR TRACKING
 // ===============================
+let cachedUserIp = null;
+
+async function getVisitorIp() {
+  if (cachedUserIp) return cachedUserIp;
+
+  try {
+    // Try multiple services with fallback
+    const services = [
+      () => fetch("https://api.ipify.org?format=json").then(r => r.json()).then(d => d.ip),
+      () => fetch("https://ipapi.co/json/").then(r => r.json()).then(d => d.ip),
+      () => fetch("https://ip.nf/?json").then(r => r.json()).then(d => d.query)
+    ];
+
+    for (const service of services) {
+      try {
+        cachedUserIp = await Promise.race([service(), new Promise((_, reject) => setTimeout(() => reject("timeout"), 3000))]);
+        if (cachedUserIp) return cachedUserIp;
+      } catch (e) {
+        continue;
+      }
+    }
+  } catch (err) {
+    console.warn("⚠️ Could not fetch IP");
+  }
+
+  return null;
+}
+
 async function trackVisitor() {
   try {
-    const res = await fetch("https://ipapi.co/json/");
-    const data = await res.json();
+    const ip = await getVisitorIp();
 
     const visitor = {
-      ip: data.ip,
-      city: data.city,
-      region: data.region,
-      org: data.org,
+      ip: ip || "unknown",
       page: window.location.pathname,
       full_url: window.location.href,
       query: window.location.search,
@@ -3178,11 +3365,13 @@ async function trackVisitor() {
     console.log("👀 Visitor:", visitor);
 
     // 🔥 SEND TO SUPABASE
-    const { error } = await window.supabaseClient
-     .from("visitors")
-     .insert([visitor]);
+    if (window.supabaseClient) {
+      const { error } = await window.supabaseClient
+        .from("visitors")
+        .insert([visitor]);
 
-    if (error) console.error("❌ Supabase error:", error);
+      if (error) console.error("❌ Supabase error:", error);
+    }
 
   } catch (err) {
     console.error("❌ Tracking error:", err);
