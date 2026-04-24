@@ -23,6 +23,7 @@
   OneSignalDeferred.push(async function(OneSignal) {
     await OneSignal.init({
       appId: "438a52af-ebf7-4793-a690-cbeee4f8606f",
+      serviceWorkerParam: { scope: "/" }
     });
   });
 </script>
@@ -94,6 +95,9 @@
 
     <div class="card" id="doneCard">
       <button type="button" id="doneBtn" onclick="finishDay()">DONE</button>
+      <div id="doneLoadingBar" class="done-loading-bar" style="display:none;">
+        <div class="done-loading-progress"></div>
+      </div>
       <div id="dayResults" class="day-results" style="display:none;"></div>
       <div id="dayStats"></div>
       <button type="button" id="revertDayBtn" class="revert-day-btn" style="display:none;" onclick="revertDay()">Revert day</button>

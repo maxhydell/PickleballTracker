@@ -20,8 +20,8 @@ const LS_DAY_COMPLETE = "pbTracker_dayComplete";
 const LS_PLAYER_PREF = "pbTracker_playerPref_v1";
 const LS_MORNING_WINPCT = "pbTracker_morningWinPct";
 const LS_SCHEDULE_WEEK_ANCHOR = "pbTracker_scheduleWeekAnchor_v1";
-const LS_USER_IP = "pbTracker_userIp_v1";
-const LS_IP_VERIFIED = "pbTracker_ipVerified_v1";
+const LS_DEVICE_ID = "pbTracker_deviceId_v1";
+const LS_DEVICE_VERIFIED = "pbTracker_deviceVerified_v1";
 const ACCESS_CODE = "ymcapickle";
 
 let scheduleDirty = false;
@@ -41,13 +41,7 @@ let userIp = null;
 let isEditingLocked = false;
 let loadingProgress = 0;
 let rankingsComponentsReady = false;
-const WHITELISTED_IPS = [
-  "73.148.150.212",
-  "2603:3010:1732:d600:9895:4ad6:9f4f:40c"
-];
-
-window.loadedShared = false;
-let lastMetaSeen = null;
+let deviceId = null;
 let cachedVisitorContext = null;
 function log(label, data) {
   console.log("🔥", label, data);
@@ -124,6 +118,63 @@ function collectSetScoresFromDom(setNumber) {
 
     return `${a}-${b}`;
   });
+}
+
+function getOrCreateDeviceId() {
+  let id = localStorage.getItem(LS_DEVICE_ID);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(LS_DEVICE_ID, id);
+    console.log("📱 New device ID created:", id);
+  } else {
+    console.log("📱 Using existing device ID:", id);
+  }
+  deviceId = id;
+  return id;
+}
+
+async function checkDeviceWhitelist() {
+  try {
+    updateLoadingProgress(15, "Verifying device...");
+
+    const id = getOrCreateDeviceId();
+
+    if (!window.supabaseClient) {
+      console.warn("⚠️ Supabase client not available, cannot check whitelist");
+      return;
+    }
+
+    // Check if device is whitelisted
+    const { data, error } = await window.supabaseClient
+      .from("device_whitelist")
+      .select("*")
+      .eq("device_id", id);
+
+    if (error) {
+      console.error("❌ Whitelist check error:", error);
+      isEditingLocked = true;
+      setTimeout(() => {
+        showAccessRestrictionPopup();
+      }, 500);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      isEditingLocked = false;
+      localStorage.setItem(LS_DEVICE_VERIFIED, "1");
+      console.log("✅ Device whitelisted:", id);
+    } else {
+      isEditingLocked = true;
+      console.warn("⚠️ Device NOT whitelisted:", id);
+      setTimeout(() => {
+        showAccessRestrictionPopup();
+      }, 500);
+    }
+
+  } catch (err) {
+    console.error("❌ Device check error:", err);
+    isEditingLocked = true;
+  }
 }
 
 async function loadCriticalPageData(pageId) {
@@ -229,7 +280,7 @@ function queueBackgroundStartup(pageId) {
         loadTodaySetsAll();
       }
 
-      await checkIpWhitelist();
+      await checkDeviceWhitelist();
       lockEditingIfNeeded();
       trackVisitor();
     } catch (err) {
@@ -240,36 +291,8 @@ function queueBackgroundStartup(pageId) {
   }, 100);
 }
 
-async function checkIpWhitelist() {
-  try {
-    updateLoadingProgress(15, "Verifying access...");
 
-    const visitor = await getVisitorContext();
-    userIp = visitor.ip;
-    localStorage.setItem(LS_USER_IP, userIp || "unknown");
-
-    const isWhitelisted = userIp && WHITELISTED_IPS.includes(userIp);
-    
-    if (!isWhitelisted) {
-      isEditingLocked = true;
-      console.warn("⚠️ IP NOT WHITELISTED:", userIp);
-      
-      // Show access restriction popup after app loads
-      setTimeout(() => {
-        showAccessRestrictionPopup(userIp || "unknown");
-      }, 500);
-    } else {
-      isEditingLocked = false;
-      localStorage.setItem(LS_IP_VERIFIED, "1");
-      console.log("✅ IP WHITELISTED:", userIp);
-    }
-
-  } catch (err) {
-    console.error("❌ IP check error:", err);
-  }
-}
-
-function showAccessRestrictionPopup(ip) {
+function showAccessRestrictionPopup() {
   const popupConfigs = [
     { pageId: "input", popupId: "accessRestrictionPopup-input", inputId: "accessCode" },
     { pageId: "schedule", popupId: "accessRestrictionPopup-schedule", inputId: "accessCodeSchedule" },
@@ -291,12 +314,11 @@ function showAccessRestrictionPopup(ip) {
       <div class="player-onboard-inner">
         <div class="player-onboard-text">
           <h3>⚠️ Editing Access Required</h3>
-          <p>You currently don't have editing access. Enter a code to proceed.</p>
+          <p>You currently don't have editing access. Enter the access code to proceed.</p>
           <div style="margin-top: 15px;">
             <input id="${inputId}" type="password" placeholder="Enter access code" class="onboard-input" onkeypress="if(event.key==='Enter') verifyAccessCode()" />
             <button onclick="verifyAccessCode()" style="margin-top: 10px; width: 100%; padding: 10px; background: #4fc3ff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: #000;">Unlock</button>
           </div>
-          <p style="font-size: 12px; color: #999; margin-top: 10px;">Your IP: ${ip}</p>
         </div>
       </div>
     `;
@@ -331,7 +353,21 @@ function verifyAccessCode() {
   const code = String(inputEl.value || "").trim();
 
   if (code === ACCESS_CODE) {
-    localStorage.setItem(LS_IP_VERIFIED, "1");
+    // Add device to whitelist
+    if (window.supabaseClient && deviceId) {
+      window.supabaseClient
+        .from("device_whitelist")
+        .insert([{ device_id: deviceId, timestamp: new Date().toISOString() }])
+        .then(({ error }) => {
+          if (error) {
+            console.error("❌ Failed to whitelist device:", error);
+          } else {
+            console.log("✅ Device added to whitelist");
+          }
+        });
+    }
+
+    localStorage.setItem(LS_DEVICE_VERIFIED, "1");
     isEditingLocked = false;
     console.log("✅ Access unlocked");
 
@@ -2045,51 +2081,50 @@ async function finishDay() {
   }
   
   console.log("🏁 finishDay clicked");
+  
+  // Show loading bar
+  const loadingBar = document.getElementById("doneLoadingBar");
+  if (loadingBar) {
+    loadingBar.style.display = "block";
+  }
+  
+  function updateDoneProgress(percent) {
+    const progress = document.querySelector(".done-loading-progress");
+    if (progress) {
+      progress.style.width = percent + "%";
+    }
+  }
 
   // 🔥 1. SNAPSHOT BEFORE
+  updateDoneProgress(10);
   const before = await callAPI({ action: "getUserTrend" }, { force: true });
 
-  // 🔥 2. SAVE DAY + UPDATE STATS (your existing backend logic)
-
-// 🔥 2. BUILD RESULTS (ONLY CHANGED PLAYERS)
-
-// 🔥 3. CREATE SHARE ID (NOT USED HERE ANYMORE — SAFE TO KEEP)
-const tempShareId = Math.random().toString(36).substring(2, 10);
-
-// 🔥 4. SAVE WITH ID + DATA (NO LONGER USED — SAFE BUT DOES NOTHING IMPORTANT)
-// await callAPI({
-//  action: "saveHistory",
- // resultId: tempShareId,
- // data: JSON.stringify(final)
-// });
-
-// 🔥 5. BUILD SHARE URL (TEMP — NOT USED)
-const tempShareUrl = `${window.location.origin}${getSiteBasePath()}share/?r=${tempShareId}`;
-
-
-
-
   // 🔔 REQUEST NOTIFICATION PERMISSION
-if (window.OneSignal && !localStorage.getItem("notifAsked")) {
-  OneSignal.push(() => {
-    OneSignal.Notifications.requestPermission();
-  });
-  localStorage.setItem("notifAsked", "1");
-}
+  updateDoneProgress(15);
+  if (window.OneSignal && !localStorage.getItem("notifAsked")) {
+    OneSignal.push(() => {
+      OneSignal.Notifications.requestPermission();
+    });
+    localStorage.setItem("notifAsked", "1");
+  }
 
   // 🔥 3. SNAPSHOT AFTER
+  updateDoneProgress(25);
   const after = await callAPI({ action: "getUserTrend" }, { force: true });
 
   // 🔥 4. GET TODAY SETS (for wins + points)
+  updateDoneProgress(35);
   const sets = await callAPI({ action: "getTodaySets" });
   if (!Array.isArray(sets)) {
     console.error("❌ finishDay failed: no sets data", sets);
+    if (loadingBar) loadingBar.style.display = "none";
     return;
   }
 
   const results = {};
 
   // ===== BUILD WINS + POINTS =====
+  updateDoneProgress(45);
   sets.forEach(set => {
     const teamA = set.teamA.split("/").map(p => p.trim().toLowerCase());
     const teamB = set.teamB.split("/").map(p => p.trim().toLowerCase());
@@ -2117,6 +2152,7 @@ if (window.OneSignal && !localStorage.getItem("notifAsked")) {
   });
 
   // ===== FETCH PREVIOUS HISTORY FOR EACH PLAYER =====
+  updateDoneProgress(55);
   const previousHistoryMap = {};
   for (const name of Object.keys(results)) {
     const prev = await callAPI({
@@ -2127,6 +2163,7 @@ if (window.OneSignal && !localStorage.getItem("notifAsked")) {
   }
 
   // ===== ADD % CHANGE (comparing to PREVIOUS history entry) =====
+  updateDoneProgress(65);
   const final = Object.keys(results).map(name => {
     const previous = previousHistoryMap[name] || { winPct: 0, pointsAvg: 0 };
     const current = before.find(p => p.name.toLowerCase() === name)?.winPct || 0;
@@ -2149,17 +2186,20 @@ if (window.OneSignal && !localStorage.getItem("notifAsked")) {
   });
 
   // ===== SORT (wins → points) =====
+  updateDoneProgress(70);
   final.sort((a, b) => {
     if (b.wins !== a.wins) return b.wins - a.wins;
     return b.points - a.points;
   });
 
   // ===== RENDER =====
+  updateDoneProgress(75);
   renderResults(final);
   setDayComplete(true);
   updateDoneUiVisibility();
 
   // ===== SAVE HISTORY TO SUPABASE =====
+  updateDoneProgress(80);
   try {
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     for (const player of final) {
@@ -2184,6 +2224,7 @@ if (window.OneSignal && !localStorage.getItem("notifAsked")) {
 
   await loadRankings();
 
+  updateDoneProgress(90);
   console.log("📊 finishDay snapshots", {
     before,
     after,
@@ -2191,18 +2232,17 @@ if (window.OneSignal && !localStorage.getItem("notifAsked")) {
     final
   });
 
-
-
   const shareId = generateShareId();
   localStorage.setItem("results_" + shareId, JSON.stringify(final));
 
-// 🔥 ADD THIS (CRITICAL)
-await callAPI({
-  action: "saveSharedResult",
-  resultId: shareId,
-  data: JSON.stringify(final)
-});
+  // 🔥 ADD THIS (CRITICAL)
+  await callAPI({
+    action: "saveSharedResult",
+    resultId: shareId,
+    data: JSON.stringify(final)
+  });
 
+  updateDoneProgress(95);
   localStorage.setItem(`pbTracker_results_${todayKey()}`, buildResultsHtml(
     final.map(x => ({ ...x, key: x.name.toLowerCase(), displayName: x.name, prevWinPct: previousHistoryMap[x.name]?.winPct || 0 })),
     getMorningWinPctSnapshot(globalData.trend || before || []),
@@ -2217,8 +2257,14 @@ await callAPI({
     el.style.display = "block";
   }
 
-  showShareButton(shareUrl);
+  updateDoneProgress(100);
+  if (loadingBar) {
+    setTimeout(() => {
+      loadingBar.style.display = "none";
+    }, 300);
+  }
 
+  showShareButton(shareUrl);
 }
 
 
@@ -3797,80 +3843,26 @@ window.addEventListener("beforeunload", function (e) {
 // 🔥 VISITOR TRACKING
 // ===============================
 async function getVisitorContext() {
-  if (cachedVisitorContext) return cachedVisitorContext;
-
-  const fallbackContext = {
-    ip: null,
-    city: null,
-    region: null,
-    org: null,
-    mac: null
-  };
-
-  try {
-    const services = [
-      () => fetch("https://ipapi.co/json/").then(r => r.json()).then(d => ({
-        ip: d.ip || null,
-        city: d.city || null,
-        region: d.region || null,
-        org: d.org || null,
-        mac: null
-      })),
-      () => fetch("https://ip.nf/?json").then(r => r.json()).then(d => ({
-        ip: d.ip?.ip || d.query || null,
-        city: d.ip?.city || null,
-        region: d.ip?.region || null,
-        org: d.ip?.org || null,
-        mac: null
-      })),
-      () => fetch("https://api.ipify.org?format=json").then(r => r.json()).then(d => ({
-        ip: d.ip || null,
-        city: null,
-        region: null,
-        org: null,
-        mac: null
-      }))
-    ];
-
-    for (const service of services) {
-      try {
-        const result = await Promise.race([
-          service(),
-          new Promise((_, reject) => setTimeout(() => reject("timeout"), 3000))
-        ]);
-        if (result?.ip) {
-          cachedVisitorContext = { ...fallbackContext, ...result };
-          return cachedVisitorContext;
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-  } catch (err) {
-    console.warn("⚠️ Could not fetch visitor context");
-  }
-
-  cachedVisitorContext = fallbackContext;
-  return cachedVisitorContext;
+  // Device-based tracking - no IP tracking needed
+  return { device_id: getOrCreateDeviceId() };
 }
 
 async function getVisitorIp() {
-  const visitor = await getVisitorContext();
-  return visitor.ip;
+  // Legacy function - no longer used, returns device_id
+  return getOrCreateDeviceId();
 }
 
 async function trackVisitor() {
   try {
-    const visitorContext = await getVisitorContext();
+    const device = getOrCreateDeviceId();
     const params = new URLSearchParams(window.location.search);
     const page = params.get("page") || getRoutePage() || window.location.pathname;
 
     const visitor = {
-      ip: visitorContext.ip || "unknown",
-      mac: visitorContext.mac || null,
-      city: visitorContext.city || null,
-      region: visitorContext.region || null,
-      org: visitorContext.org || null,
+      device_id: device,
+      city: null,
+      region: null,
+      org: null,
       page: page || "unknown",
       full_url: window.location.href,
       query: window.location.search || null,
@@ -3879,7 +3871,7 @@ async function trackVisitor() {
       userAgent: navigator.userAgent
     };
 
-    console.log("🔍 Tracking visitor:", visitor);
+    console.log("🔍 Tracking visitor (device-based):", visitor);
 
     if (window.supabaseClient) {
       const { data, error } = await window.supabaseClient

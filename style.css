@@ -1767,6 +1767,38 @@ select.dash-player-select option,
 
 .analytics-card.green { border-left: 4px solid #00c853; }
 .analytics-card.red { border-left: 4px solid #ff3b30; }
+
+/* Done Loading Bar */
+.done-loading-bar {
+  width: 100%;
+  height: 4px;
+  background: #e5e5e5;
+  border-radius: 2px;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.done-loading-progress {
+  height: 100%;
+  background: linear-gradient(90deg, #4fc3ff, #059669, #4fc3ff);
+  background-size: 200% 100%;
+  width: 0%;
+  animation: doneLoadingPulse 1.5s ease-in-out infinite;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+@keyframes doneLoadingPulse {
+  0% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 0%;
+  }
+  100% {
+    background-position: 200% 0%;
+  }
+}
 .analytics-card.blue { border-left: 4px solid #0a84ff; }
 .analytics-card.yellow { border-left: 4px solid #ffd60a; }
 

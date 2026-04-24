@@ -34,16 +34,18 @@ function doGet(e) {
       result = initializeWeekSchedule();
     }
     if (action === "lastUpdated") {
-      const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-      const sheet = ss.getSheetByName("Meta");
+      try {
+        const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+        const sheet = ss.getSheetByName("Meta");
 
-      if (!sheet) {
-        return json({ error: "Meta sheet missing" });
+        if (!sheet) {
+          result = { error: "Meta sheet missing" };
+        } else {
+          result = sheet.getRange("A1").getValue() || new Date().toISOString();
+        }
+      } catch (err) {
+        result = { error: "Failed to get lastUpdated", details: err.toString() };
       }
-
-      return ContentService.createTextOutput(
-        JSON.stringify(sheet.getRange("A1").getValue())
-      );
     }
     else if (action === "saveSetFull") {
       result = saveSetFull(e.parameter);
