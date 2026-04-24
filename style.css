@@ -1253,50 +1253,76 @@ select.dash-player-select option,
 .share-modal-content {
   position: relative;
   z-index: 9999;
-  background: white;
-  padding: 24px;
-  border-radius: 12px;
+  background: linear-gradient(135deg, #1a1614, #241f1c);
+  color: #fff;
+  padding: 28px;
+  border-radius: 16px;
   max-width: 90%;
   width: 100%;
-  max-width: 400px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .share-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .share-modal-header h3 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #4fc3ff, #00c853);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .close-btn {
-  background: none;
-  border: none;
-  font-size: 24px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 20px;
   cursor: pointer;
-  color: #666;
+  color: #fff;
   padding: 0;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s ease;
 }
 
 .close-btn:hover {
-  color: #000;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: rotate(90deg);
 }
 
 .share-modal-text {
-  margin: 12px 0;
-  color: #666;
+  margin: 16px 0;
+  color: #bbb;
   text-align: center;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .modal-content {
@@ -1935,7 +1961,7 @@ select.dash-player-select option,
   margin-top: auto;
   border-top: 1px solid rgba(255,255,255,0.08);
   padding: 16px;
-  padding-bottom: 20px; /* 👈 your “20px above bottom” */
+  padding-bottom: 32px; /* 👈 your “20px above bottom” */
   display: flex;
   justify-content: center;
 }

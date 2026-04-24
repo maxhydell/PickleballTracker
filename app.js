@@ -780,7 +780,7 @@ function renderSetsInto(container, data, opts = {}) {
     const setWrapper = document.createElement("div");
     setWrapper.className = "set-container";
     setWrapper.innerHTML = `
-      <div class="set-header" onclick="toggleSet(this)">
+      <div class="set-header" data-set="${match.set}" onclick="toggleSet(this)">
         <span>Set ${match.set}</span>
 
         <button class="set-save-btn"
@@ -962,17 +962,19 @@ async function saveSet(setNumber) {
     // 🔥 CRITICAL FIX — CLEAR CACHE
     Object.keys(memoryCache).forEach(k => delete memoryCache[k]);
 
-loadTodaySetsAll();
-await loadRankings();
+    loadTodaySetsAll();
+    await loadRankings();
 
-// 🔥 re-apply AFTER DOM rebuild
-setTimeout(() => {
-  const btnAfter = document.getElementById(`save-btn-${setNumber}`);
-  if (btnAfter) {
-    btnAfter.innerText = "Saved";
-    btnAfter.classList.add("saved");
-  }
-}, 120);
+    // 🔥 re-apply AFTER DOM rebuild
+    setTimeout(() => {
+      const btnAfter = document.getElementById(`save-btn-${setNumber}`);
+      if (btnAfter) {
+        btnAfter.innerText = "Saved";
+        btnAfter.classList.add("saved");
+        // Remove unsaved indicator when saved
+        removeUnsavedIndicator(setNumber);
+      }
+    }, 120);
 
   } catch (e) {
     console.error(e);
@@ -1922,8 +1924,28 @@ function renderLeaderboard(data) {
 }
 
 async function getHistory() {
-  historyCache = []; // 🔥 force refresh next time
-  return await callAPI({ action: "getHistory" });
+  try {
+    const { data, error } = await window.supabaseClient
+      .from('history')
+      .select('*')
+      .order('Date', { ascending: false });
+    
+    if (error) throw error;
+    
+    // Transform Supabase data to match expected format
+    const formatted = (data || []).map(row => ({
+      date: row.Date,
+      name: row.Player,
+      winPct: parseFloat(row.WinPct) || 0,
+      pointsAvg: parseFloat(row.PointsAvg) || 0
+    }));
+    
+    historyCache = formatted;
+    return formatted;
+  } catch (err) {
+    console.error("❌ Failed to fetch history from Supabase:", err);
+    return [];
+  }
 }
 
 function escapeHtml(str) {
@@ -2137,8 +2159,28 @@ if (window.OneSignal && !localStorage.getItem("notifAsked")) {
   setDayComplete(true);
   updateDoneUiVisibility();
 
-  // ===== SAVE HISTORY TO BACKEND =====
-  await callAPI({ action: "saveHistory" });
+  // ===== SAVE HISTORY TO SUPABASE =====
+  try {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    for (const player of final) {
+      const trend = after.find(p => p.name.toLowerCase() === player.name.toLowerCase());
+      if (trend) {
+        await window.supabaseClient
+          .from('history')
+          .insert([
+            {
+              Date: today,
+              Player: player.name,
+              WinPct: trend.winPct.toString(),
+              PointsAvg: trend.pointsAvg.toString()
+            }
+          ]);
+      }
+    }
+    console.log("✅ History saved to Supabase");
+  } catch (err) {
+    console.error("❌ Failed to save history to Supabase:", err);
+  }
 
   await loadRankings();
 
@@ -2537,6 +2579,29 @@ function setWeekRange() {
 
 
 
+function showUnsavedIndicator(setNumber) {
+  const header = document.querySelector(`.set-header[data-set="${setNumber}"]`);
+  if (!header) return;
+  
+  let indicator = header.querySelector(".unsaved-dot");
+  if (!indicator) {
+    indicator = document.createElement("span");
+    indicator.className = "unsaved-dot";
+    indicator.title = "Unsaved changes";
+    header.appendChild(indicator);
+  }
+}
+
+function removeUnsavedIndicator(setNumber) {
+  const header = document.querySelector(`.set-header[data-set="${setNumber}"]`);
+  if (!header) return;
+  
+  const indicator = header.querySelector(".unsaved-dot");
+  if (indicator) {
+    indicator.remove();
+  }
+}
+
 let scoreTimeout;
 
 function updateScore(set, gameIndex, input) {
@@ -2557,11 +2622,12 @@ function updateScore(set, gameIndex, input) {
 
     const score = `${a}-${b}`;
 
-    // 🔥 RESET SAVE BUTTON
+    // 🔥 RESET SAVE BUTTON & SHOW UNSAVED INDICATOR
 const btn = document.getElementById(`save-btn-${set}`);
 if (btn && btn.classList.contains("saved")) {
   btn.innerText = "Save";
   btn.classList.remove("saved");
+  showUnsavedIndicator(set);
 }
 
     // 🔥 EMPTY = DO NOTHING
@@ -3801,24 +3867,36 @@ async function trackVisitor() {
 
     const visitor = {
       ip: visitorContext.ip || "unknown",
-      mac: visitorContext.mac,
-      city: visitorContext.city,
-      region: visitorContext.region,
-      org: visitorContext.org,
-      page,
+      mac: visitorContext.mac || null,
+      city: visitorContext.city || null,
+      region: visitorContext.region || null,
+      org: visitorContext.org || null,
+      page: page || "unknown",
       full_url: window.location.href,
-      query: window.location.search,
-      mode: params.get("p"),
+      query: window.location.search || null,
+      mode: params.get("p") || null,
       time: new Date().toISOString(),
       userAgent: navigator.userAgent
     };
 
+    console.log("🔍 Tracking visitor:", visitor);
+
     if (window.supabaseClient) {
-      const { error } = await window.supabaseClient
+      const { data, error } = await window.supabaseClient
         .from("visitors")
-        .insert([visitor]);
+        .insert([visitor])
+        .select();
+
+      if (error) {
+        console.error("❌ Visitor tracking error:", error);
+      } else {
+        console.log("✅ Visitor tracked:", data);
+      }
+    } else {
+      console.warn("⚠️ Supabase client not available");
     }
 
   } catch (err) {
+    console.error("❌ Track visitor exception:", err);
   }
 }
