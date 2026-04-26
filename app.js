@@ -24,7 +24,7 @@ const LS_DEVICE_ID = "pbTracker_deviceId_v1";
 const LS_DEVICE_VERIFIED = "pbTracker_deviceVerified_v1";
 const ACCESS_CODE = "ymcapickle";
 
-// Bite Strength Rating Constants
+// Power Rating Rating Constants
 const BITE_STRENGTH_K = 0.75;
 const BITE_STRENGTH_D = 12;
 const BITE_STRENGTH_ALPHA = 0.75;
@@ -1451,16 +1451,50 @@ function bookCourt(date, button) {
     alert("⚠️ Editing is locked. Enter the access code to proceed.");
     return;
   }
-  
+
   console.log("🎾 Book Court clicked", { date });
-  setBookCourtDone(date);
+
   if (button) {
     button.disabled = true;
     button.classList.add("is-booked");
-    button.textContent = "Court Booked";
+    button.textContent = "Booking...";
   }
-  // Browser security note: direct execution of local .bat files is blocked.
-  // This preserves UI state and logs intent until a local listener/protocol is wired.
+
+  fetch("https://api.github.com/repos/max-hydell/courtreserve/actions/workflows/run.yml/dispatches", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer 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",
+      "Accept": "application/vnd.github+json",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+  ref: "main",
+  inputs: {
+    date: date
+  }
+})
+  })
+  .then(res => {
+    if (!res.ok) throw new Error("GitHub trigger failed");
+
+    console.log("✅ Bot triggered");
+
+    // ✅ ONLY mark as booked AFTER success
+    setBookCourtDone(date);
+
+    if (button) {
+      button.textContent = "Court Booked";
+    }
+  })
+  .catch(err => {
+    console.error("❌ Booking failed:", err);
+
+    if (button) {
+      button.disabled = false;
+      button.classList.remove("is-booked");
+      button.textContent = "Retry Booking";
+    }
+  });
 }
 
 let scheduleLoading = false;
@@ -1733,19 +1767,19 @@ async function loadRankings(options = {}) {
   const player = data.find(p => p.name.toLowerCase() === selectedPlayer);
   if (!player) return;
 
-  // Get all sets once for bite strength calculations
+  // Get all sets once for Power Rating calculations
   const allSetsForRatings = (await getAllSets()) || [];
 
   const bigStatEl = document.getElementById("bigStat");
   const topPercentEl = document.getElementById("topPercent");
   if (bigStatEl) {
-    // Calculate Bite Strength and display it instead of Win %
+    // Calculate Power Rating and display it instead of Win %
     const biteStrength = calculateBiteStrength(selectedPlayer, allSetsForRatings, data);
     bigStatEl.innerText = biteStrength.toFixed(2);
     
-    // Update label to show Bite Strength
+    // Update label to show Power Rating
     if (topPercentEl) {
-      topPercentEl.innerText = "Bite Strength";
+      topPercentEl.innerText = "Power Rating";
     }
     
     // 🔥 EARLY EXIT FOR RANKINGS PAGE
@@ -1769,7 +1803,7 @@ async function loadRankings(options = {}) {
   }
 
   const rank = sorted.findIndex(p => p.name === player.name) + 1;
-  // Label is now set to "Bite Strength" in the bigStatEl block above
+  // Label is now set to "Power Rating" in the bigStatEl block above
   // document.getElementById("topPercent").innerText = `#${rank} Place`;
 
   const playerHistory = historyCache
@@ -1853,7 +1887,7 @@ async function loadRankings(options = {}) {
     p.winPct > 0 || p.pointsAvg > 0
   ).sort((a, b) => b.winPct - a.winPct);
 
-  // Calculate Bite Strength for all players (reuse allSetsForRatings from above)
+  // Calculate Power Rating for all players (reuse allSetsForRatings from above)
   filtered.forEach(player => {
     if (!player.biteStrength) {
       player.biteStrength = calculateBiteStrength(player.name, allSetsForRatings, data);
@@ -1942,7 +1976,7 @@ let currentPage = 0;
 function renderLeaderboard(data) {
   if (!data || !Array.isArray(data)) return;
 
-  // Pre-calculate bite strength for all players
+  // Pre-calculate Power Rating for all players
   const biteStrengths = {};
   data.forEach(p => {
     const name = String(p.name || "").toLowerCase();
@@ -1961,7 +1995,7 @@ function renderLeaderboard(data) {
         <span>Player</span>
         <span>Win %</span>
         <span>Points Avg.</span>
-        <span>Bite Strength</span>
+        <span>Power Rating</span>
       </div>
 
       ${data.map((p, i) => `
@@ -3191,8 +3225,8 @@ function handleAnalyticsStatClick(kind) {
       value => (value || BITE_STRENGTH_BASE).toFixed(2)
     );
     showAnalyticsModal(
-      "Bite Strength",
-      ["Rank", "Name", "Bite Strength"],
+      "Power Rating",
+      ["Rank", "Name", "Power Rating"],
       rows,
       pk,
       { noHighlight: false }
@@ -3621,7 +3655,7 @@ function getBestPartner(sets, player) {
 
 
 
-// ===== BITE STRENGTH CALCULATION (ELO-LIKE RATING) =====
+// ===== Power Rating CALCULATION (ELO-LIKE RATING) =====
 function calculateBiteStrength(playerName, sets, trendData) {
   const pl = String(playerName || "").toLowerCase();
   if (!Array.isArray(sets)) sets = [];
@@ -3838,7 +3872,7 @@ async function renderDashboardAnalytics(player) {
     playerStats.gamesPlayed ?? playerStats.games ?? countGamesPlayedInSets(allSets, pl)
   ) || 0;
   
-  // Calculate Bite Strength
+  // Calculate Power Rating
   const biteStrength = calculateBiteStrength(pl, allSets, trend);
 
   const dropdownSorted = sortPlayersForDropdown(trend);
