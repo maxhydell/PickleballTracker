@@ -188,6 +188,13 @@ async function checkDeviceWhitelist() {
   }
 }
 
+function isPlayersPageAccessAllowed() {
+  const id = getOrCreateDeviceId();
+  if (!window.supabaseClient) return false;
+  if (localStorage.getItem(LS_DEVICE_VERIFIED) === "1") return true;
+  return false;
+}
+
 async function loadCriticalPageData(pageId) {
   if (pageId === "rankings") {
     updateLoadingProgress(35, "Loading rankings...");
@@ -707,6 +714,38 @@ function sortPlayersForDropdown(data) {
 
 async function loadPlayers() {
   playersCache = await callAPI({ action: "getPlayers" });
+  
+  // Augment with Supabase data if available
+  if (window.supabaseClient && Array.isArray(playersCache)) {
+    try {
+      const { data: supabasePlayerData, error } = await window.supabaseClient
+        .from('Players')
+        .select('name, DUPR, PWRank, phone');
+
+      if (!error && supabasePlayerData) {
+        // Merge Supabase data into playersCache
+        const supabaseMap = {};
+        supabasePlayerData.forEach(p => {
+          supabaseMap[String(p.name).toLowerCase()] = {
+            DUPR: p.DUPR,
+            PWRank: p.PWRank,
+            phone: p.phone
+          };
+        });
+
+        playersCache.forEach(p => {
+          const supabaseData = supabaseMap[String(p.name).toLowerCase()];
+          if (supabaseData) {
+            p.DUPR = supabaseData.DUPR;
+            p.PWRank = supabaseData.PWRank;
+            if (supabaseData.phone) p.phone = supabaseData.phone;
+          }
+        });
+      }
+    } catch (err) {
+      console.error("⚠️ Error augmenting players with Supabase data:", err);
+    }
+  }
 }
 
 
@@ -753,6 +792,10 @@ function showPage(id, options = {}) {
 
   if (id === "input" || id === "sets") {
     requestAnimationFrame(() => loadTodaySetsAll());
+  }
+
+  if (id === "players") {
+    requestAnimationFrame(() => loadPlayersList());
   }
 }
 
@@ -949,6 +992,30 @@ async function loadTodaySetsAll() {
   targets.forEach(el => renderSetsInto(el, data, { locked }));
   restoreResultsIfAny();
   updateDoneUiVisibility();
+
+  // Add predicted scores as placeholders after rendering
+  setTimeout(async () => {
+    await addPredictedScorePlaceholders(data);
+  }, 100);
+}
+
+async function addPredictedScorePlaceholders(setsData) {
+  if (!Array.isArray(setsData) || !playersCache || !playersCache.length) return;
+  
+  const predictions = await getPredictedScoresForDay(setsData);
+  
+  Object.entries(predictions).forEach(([key, predicted]) => {
+    const [setNum, gameIdx] = key.split("-").map(Number);
+    const aInput = document.querySelector(`.match-card[data-set="${setNum}"][data-game="${gameIdx}"] input:first-of-type`);
+    const bInput = document.querySelector(`.match-card[data-set="${setNum}"][data-game="${gameIdx}"] input:last-of-type`);
+    
+    if (aInput && !aInput.value) {
+      aInput.placeholder = String(predicted.teamA);
+    }
+    if (bInput && !bInput.value) {
+      bInput.placeholder = String(predicted.teamB);
+    }
+  });
 }
 
 function updateDoneUiVisibility() {
@@ -1029,6 +1096,156 @@ async function saveSet(setNumber) {
   }
 
   btn.disabled = false;
+}
+
+async function calculateSetRatings(setData, playersList) {
+  // This calculates rating deltas for a single set based on the new system
+  // Returns array of {player_name, delta_A, delta_B, opponent_avg}
+  
+  if (!setData || !Array.isArray(playersList)) return [];
+
+  const teamA = (setData.teamA || "").split("/").map(p => p.trim().toLowerCase());
+  const teamB = (setData.teamB || "").split("/").map(p => p.trim().toLowerCase());
+  
+  // Get current power rankings for each player
+  const getPlayerPWRank = (name) => {
+    const player = playersList.find(p => p.name.toLowerCase() === name);
+    return Number(player?.PWRank || 50);
+  };
+
+  // Calculate team average power rankings
+  const teamAAvg = teamA.length ? teamA.reduce((sum, p) => sum + getPlayerPWRank(p), 0) / teamA.length : 50;
+  const teamBAvg = teamB.length ? teamB.reduce((sum, p) => sum + getPlayerPWRank(p), 0) / teamB.length : 50;
+
+  const ratingChanges = [];
+  let totalTeamAWins = 0, totalTeamBWins = 0, totalTeamAPoints = 0, totalTeamBPoints = 0;
+
+  // Sum up wins and points from all scores
+  (setData.scores || []).forEach(score => {
+    if (!score || !score.includes("-")) return;
+    const [a, b] = score.split("-").map(Number);
+    if (a > b) {
+      totalTeamAWins++;
+      totalTeamAPoints += a;
+      totalTeamBPoints += b;
+    } else {
+      totalTeamBWins++;
+      totalTeamAPoints += a;
+      totalTeamBPoints += b;
+    }
+  });
+
+  // Calculate rating delta for each player based on team result and strength differential
+  const maxRatingChange = 4;
+  const minRatingChange = -4;
+
+  teamA.forEach(playerName => {
+    const won = totalTeamAWins > totalTeamBWins;
+    const strengthDiff = teamAAvg - teamBAvg;
+    
+    let baseChange = won ? 1 : -0.5;
+    
+    if (strengthDiff < -5) {
+      baseChange *= won ? 1.5 : 1;
+    } else if (strengthDiff > 5) {
+      baseChange *= won ? 0.7 : 1.3;
+    }
+
+    const pointsScored = totalTeamAPoints / (setData.scores.length || 1);
+    const avgPointsExpected = (teamAAvg + teamBAvg) / 2;
+    baseChange += (pointsScored - avgPointsExpected) * 0.05;
+
+    const deltaA = Math.max(minRatingChange, Math.min(maxRatingChange, baseChange * 2));
+    const deltaB = baseChange;
+
+    ratingChanges.push({
+      player_name: playerName,
+      delta_A: deltaA,
+      delta_B: deltaB,
+      opponent_avg: teamBAvg,
+      set_data: setData
+    });
+  });
+
+  teamB.forEach(playerName => {
+    const won = totalTeamBWins > totalTeamAWins;
+    const strengthDiff = teamBAvg - teamAAvg;
+    
+    let baseChange = won ? 1 : -0.5;
+    
+    if (strengthDiff < -5) {
+      baseChange *= won ? 1.5 : 1;
+    } else if (strengthDiff > 5) {
+      baseChange *= won ? 0.7 : 1.3;
+    }
+
+    const pointsScored = totalTeamBPoints / (setData.scores.length || 1);
+    const avgPointsExpected = (teamAAvg + teamBAvg) / 2;
+    baseChange += (pointsScored - avgPointsExpected) * 0.05;
+
+    const deltaA = Math.max(minRatingChange, Math.min(maxRatingChange, baseChange * 2));
+    const deltaB = baseChange;
+
+    ratingChanges.push({
+      player_name: playerName,
+      delta_A: deltaA,
+      delta_B: deltaB,
+      opponent_avg: teamAAvg,
+      set_data: setData
+    });
+  });
+
+  return ratingChanges;
+}
+
+function calculatePredictedScore(teamAAvg, teamBAvg, baseWinPts = 11) {
+  // Calculate predicted score based on power ranking differential
+  // Returns object like { teamA: 11, teamB: 8 }
+  
+  const diff = Math.abs(teamAAvg - teamBAvg);
+  const strongerIsA = teamAAvg > teamBAvg;
+  
+  // Range: if diff is 0, predict close match (e.g., 11-9)
+  // if diff is 20+, predict blowout (e.g., 11-3)
+  
+  let strongScore = baseWinPts;
+  let weakScore = Math.max(3, Math.min(baseWinPts - 1, Math.round(baseWinPts - (diff / 5))));
+  
+  return {
+    teamA: strongerIsA ? strongScore : weakScore,
+    teamB: strongerIsA ? weakScore : strongScore
+  };
+}
+
+async function getPredictedScoresForDay(setsData) {
+  // Get all today's sets and calculate predicted scores for unplayed games
+  if (!Array.isArray(setsData) || !playersCache) return {};
+  
+  const predictions = {};
+  
+  for (const set of setsData) {
+    const teamA = (set.teamA || "").split("/").map(p => p.trim().toLowerCase());
+    const teamB = (set.teamB || "").split("/").map(p => p.trim().toLowerCase());
+    
+    const getPlayerPWRank = (name) => {
+      const player = playersCache.find(p => p.name.toLowerCase() === name);
+      return Number(player?.PWRank || 50);
+    };
+    
+    const teamAAvg = teamA.length ? teamA.reduce((sum, p) => sum + getPlayerPWRank(p), 0) / teamA.length : 50;
+    const teamBAvg = teamB.length ? teamB.reduce((sum, p) => sum + getPlayerPWRank(p), 0) / teamB.length : 50;
+    
+    const scores = getSetScores(set);
+    scores.forEach((score, idx) => {
+      const key = `${set.set}-${idx}`;
+      if (!score || !score.includes("-")) {
+        // No score yet, generate prediction
+        predictions[key] = calculatePredictedScore(teamAAvg, teamBAvg);
+      }
+    });
+  }
+  
+  return predictions;
 }
 
 function unlockGame(set, gameIndex) {
@@ -1562,6 +1779,16 @@ data = Array.from({ length: 5 }, (_, i) => {
       return p?.winPct || 0;
     }
 
+    function getPowerRankingForPlayer(name) {
+      if (!name || !window.supabaseClient) return 0;
+      // This will be called with player name, we need to look it up in our cache or fetch
+      // For now, return a default value - we'll load it asynchronously
+      const player = playersCache.find(p =>
+        p.name.toLowerCase() === String(name).toLowerCase()
+      );
+      return player?.PWRank || player?.biteStrength || 0;
+    }
+
     const container = document.getElementById("scheduleList");
 
     if (!data.length) {
@@ -1612,20 +1839,20 @@ data = Array.from({ length: 5 }, (_, i) => {
 
       const allConfirmed = row.status && row.status.every(s => s == 2);
 
-      // 🔥 Calculate average win% for the day
-      const dayWinPcts = row.players
-        .map(p => getWinPct(p))
+      // 🔥 Calculate average Power Ranking for the day
+      const dayPowerRankings = row.players
+        .map(p => getPowerRankingForPlayer(p))
         .filter(v => v > 0);
       
-      const dayAvgWinPct = dayWinPcts.length
-        ? Math.round(dayWinPcts.reduce((a, b) => a + b, 0) / dayWinPcts.length * 100)
+      const dayAvgPowerRank = dayPowerRankings.length
+        ? Math.round(dayPowerRankings.reduce((a, b) => a + b, 0) / dayPowerRankings.length)
         : 0;
 
       return `
         <div class="day-card ${allConfirmed ? "day-complete" : ""}" data-date="${row.date}">
           <div class="day-header" onclick="toggleSet(this)">
             <div class="day-name">${dayName}</div>
-            <div class="day-win-pct">${dayAvgWinPct}%</div>
+            <div class="day-win-pct">${dayAvgPowerRank}</div>
 
             ${i === topDayIndex ? `<div class="tag">Top Day</div>` : ""}
 
@@ -1686,6 +1913,286 @@ data = Array.from({ length: 5 }, (_, i) => {
   } finally {
     scheduleLoading = false; // 🔥 ALWAYS releases
   }
+}
+
+async function loadPlayersList() {
+  startTimer("Players List");
+  
+  try {
+    const container = document.getElementById("playersContainer");
+    if (!container) return;
+
+    // Check access for Players page
+    if (!isPlayersPageAccessAllowed()) {
+      container.innerHTML = `
+        <div class="players-access-card">
+          <h3>⚠️ Access Required</h3>
+          <p>Enter the access code to view the players list.</p>
+          <input type="password" id="playersAccessCode" class="players-access-input" placeholder="Enter access code" />
+          <button class="players-access-btn" onclick="verifyPlayersAccessCode()">Unlock</button>
+        </div>
+      `;
+      endTimer("Players List");
+      return;
+    }
+
+    // Load players from Supabase
+    if (!window.supabaseClient) {
+      container.innerHTML = '<div class="players-empty"><h2>Unable to load players</h2></div>';
+      return;
+    }
+
+    const { data: playersData, error } = await window.supabaseClient
+      .from('Players')
+      .select('*')
+      .order('name');
+
+    if (error || !playersData) {
+      console.error("❌ Failed to load players:", error);
+      container.innerHTML = '<div class="players-empty"><h2>Error loading players</h2></div>';
+      return;
+    }
+
+    // Get all sets for games count
+    const allSets = (await getAllSets()) || [];
+
+    // Load user's preferred player order from localStorage
+    const userOrderPref = JSON.parse(localStorage.getItem("pbTracker_playersOrder") || "[]");
+
+    // Sort players by user preference or alphabetically
+    const sortedPlayers = sortPlayersByPreference(playersData, userOrderPref);
+
+    if (!sortedPlayers || sortedPlayers.length === 0) {
+      container.innerHTML = '<div class="players-empty"><h2>No players found</h2></div>';
+      endTimer("Players List");
+      return;
+    }
+
+    // Build table header
+    let html = '<div class="players-card"><div class="players-table">';
+    html += `
+      <div class="players-header">
+        <div>Order</div>
+        <div>Name</div>
+        <div>Rating</div>
+        <div>Games</div>
+        <div>Phone</div>
+      </div>
+    `;
+
+    // Build table rows
+    sortedPlayers.forEach((player, index) => {
+      const gamesPlayed = countGamesPlayedInSets(allSets, player.name);
+      const rating = Number(player.PWRank || 0).toFixed(2);
+      const phone = player.phone || "";
+      
+      html += `
+        <div class="players-row" draggable="true" data-player-id="${player.id}" data-index="${index}" 
+             ondragstart="handlePlayerDragStart(event)" ondragover="handlePlayerDragOver(event)" 
+             ondrop="handlePlayerDrop(event)" ondragend="handlePlayerDragEnd(event)">
+          <div class="players-order-handle">=</div>
+          <div class="players-name">${escapeHtml(capitalize(player.name))}</div>
+          <div class="players-rating">${rating}</div>
+          <div class="players-games">${gamesPlayed}</div>
+          <div class="players-phone-cell">
+            ${phone ? `
+              <span class="players-phone-number">${escapeHtml(phone)}</span>
+              <div class="phone-edit-icon" onclick="editPlayerPhone('${escapeHtml(player.id)}', '${escapeHtml(player.name)}', '${escapeHtml(phone)}')">✎</div>
+            ` : `
+              <button class="phone-add-btn" onclick="editPlayerPhone('${escapeHtml(player.id)}', '${escapeHtml(player.name)}', '')">+ Add Phone</button>
+            `}
+          </div>
+        </div>
+      `;
+    });
+
+    html += '</div></div>';
+    container.innerHTML = html;
+
+    // Setup drag and drop
+    setupPlayersDragDrop();
+
+    endTimer("Players List");
+  } catch (err) {
+    console.error("❌ loadPlayersList crashed:", err);
+    document.getElementById("playersContainer").innerHTML = '<div class="players-empty"><h2>Error loading players</h2></div>';
+  }
+}
+
+function sortPlayersByPreference(players, userOrder) {
+  if (!Array.isArray(userOrder) || userOrder.length === 0) {
+    return [...players].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }
+
+  const playerMap = {};
+  players.forEach(p => {
+    playerMap[String(p.id)] = p;
+  });
+
+  const sorted = [];
+  userOrder.forEach(id => {
+    if (playerMap[id]) sorted.push(playerMap[id]);
+  });
+
+  // Add any players not in the user's order
+  players.forEach(p => {
+    if (!sorted.find(sp => sp.id === p.id)) {
+      sorted.push(p);
+    }
+  });
+
+  return sorted;
+}
+
+function savePlayersOrder() {
+  const rows = document.querySelectorAll(".players-row");
+  const order = Array.from(rows).map(row => row.dataset.playerId);
+  localStorage.setItem("pbTracker_playersOrder", JSON.stringify(order));
+  console.log("✅ Players order saved:", order);
+}
+
+let draggedPlayer = null;
+
+function handlePlayerDragStart(e) {
+  draggedPlayer = e.currentTarget;
+  e.currentTarget.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+}
+
+function handlePlayerDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  const afterElement = getDragAfterElement(e.clientY);
+  const container = document.querySelector(".players-table");
+  
+  if (afterElement == null) {
+    container.appendChild(draggedPlayer);
+  } else {
+    container.insertBefore(draggedPlayer, afterElement);
+  }
+}
+
+function getDragAfterElement(y) {
+  const draggableElements = [...document.querySelectorAll(".players-row:not(.dragging)")];
+  return draggableElements.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) {
+      return { offset: offset, element: child };
+    } else {
+      return closest;
+    }
+  }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+function handlePlayerDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+function handlePlayerDragEnd(e) {
+  e.currentTarget.classList.remove("dragging");
+  draggedPlayer = null;
+  savePlayersOrder();
+}
+
+function setupPlayersDragDrop() {
+  const container = document.querySelector(".players-table");
+  if (!container) return;
+
+  const rows = container.querySelectorAll(".players-row");
+  rows.forEach(row => {
+    row.addEventListener("dragstart", handlePlayerDragStart);
+    row.addEventListener("dragover", handlePlayerDragOver);
+    row.addEventListener("drop", handlePlayerDrop);
+    row.addEventListener("dragend", handlePlayerDragEnd);
+  });
+}
+
+async function editPlayerPhone(playerId, playerName, currentPhone) {
+  const modal = document.createElement("div");
+  modal.className = "phone-edit-modal";
+  modal.id = `phone-modal-${playerId}`;
+  modal.innerHTML = `
+    <div class="phone-edit-content">
+      <div class="phone-edit-header">Edit Phone for ${escapeHtml(capitalize(playerName))}</div>
+      <input type="tel" id="phoneInput-${playerId}" class="phone-edit-input" 
+             placeholder="(555) 123-4567" value="${escapeHtml(currentPhone)}" />
+      <div class="phone-edit-actions">
+        <button class="phone-edit-btn save" onclick="savePlayerPhone('${escapeHtml(playerId)}', '${escapeHtml(playerName)}')">Save</button>
+        <button class="phone-edit-btn cancel" onclick="closePhoneModal('${escapeHtml(playerId)}')">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closePhoneModal(playerId);
+  });
+
+  const input = document.getElementById(`phoneInput-${playerId}`);
+  if (input) input.focus();
+}
+
+function closePhoneModal(playerId) {
+  const modal = document.getElementById(`phone-modal-${playerId}`);
+  if (modal) {
+    modal.style.animation = "slideUp 0.3s ease reverse";
+    setTimeout(() => modal.remove(), 300);
+  }
+}
+
+async function savePlayerPhone(playerId, playerName) {
+  const input = document.getElementById(`phone-${playerId}`);
+  const phoneValue = document.getElementById(`phoneInput-${playerId}`)?.value || "";
+
+  if (!window.supabaseClient) {
+    alert("❌ Unable to save phone number");
+    return;
+  }
+
+  try {
+    const { error } = await window.supabaseClient
+      .from("Players")
+      .update({ phone: phoneValue })
+      .eq("id", playerId);
+
+    if (error) {
+      console.error("❌ Error saving phone:", error);
+      alert("❌ Failed to save phone number");
+      return;
+    }
+
+    console.log("✅ Phone saved for", playerName);
+    closePhoneModal(playerId);
+    
+    // Reload the players list
+    await loadPlayersList();
+  } catch (err) {
+    console.error("❌ Exception saving phone:", err);
+    alert("❌ Error saving phone number");
+  }
+}
+
+function verifyPlayersAccessCode() {
+  const codeInput = document.getElementById("playersAccessCode");
+  const code = codeInput?.value?.trim();
+
+  if (code === ACCESS_CODE) {
+    localStorage.setItem(LS_DEVICE_VERIFIED, "1");
+    loadPlayersList();
+  } else {
+    alert("❌ Incorrect access code");
+    codeInput.value = "";
+  }
+}
+
+function getPowerRankingForPlayer(name) {
+  if (!name || !playersCache) return 0;
+  const player = playersCache.find(p =>
+    p.name.toLowerCase() === String(name).toLowerCase()
+  );
+  return Number(player?.PWRank || player?.biteStrength || 0);
 }
 
 function showSuccess(id) {
@@ -1767,13 +2274,36 @@ async function loadRankings(options = {}) {
   const bigStatEl = document.getElementById("bigStat");
   const topPercentEl = document.getElementById("topPercent");
   if (bigStatEl) {
-    // Calculate Power Rating and display it instead of Win %
-    const biteStrength = calculateBiteStrength(selectedPlayer, allSetsForRatings, data);
-    bigStatEl.innerText = biteStrength.toFixed(2);
+    // Load DUPR (Rating A) from Supabase Players table
+    let duprValue = null;
+    if (window.supabaseClient) {
+      try {
+        const { data: playerData, error } = await window.supabaseClient
+          .from('Players')
+          .select('DUPR, PWRank')
+          .ilike('name', selectedPlayer)
+          .single();
+
+        if (!error && playerData) {
+          duprValue = Number(playerData.DUPR) || null;
+        }
+      } catch (err) {
+        console.error("❌ Failed to fetch DUPR from Supabase:", err);
+      }
+    }
+
+    // Display DUPR if available, otherwise calculate
+    if (duprValue !== null) {
+      bigStatEl.innerText = duprValue.toFixed(3);
+      console.log("✅ Displaying DUPR from Supabase:", duprValue);
+    } else {
+      const biteStrength = calculateBiteStrength(selectedPlayer, allSetsForRatings, data);
+      bigStatEl.innerText = biteStrength.toFixed(2);
+    }
     
-    // Update label to show Power Rating
+    // Update label to show DUPR Alternative
     if (topPercentEl) {
-      topPercentEl.innerText = "Power Rating";
+      topPercentEl.innerText = "DUPR Alternative";
     }
     
     // 🔥 EARLY EXIT FOR RANKINGS PAGE

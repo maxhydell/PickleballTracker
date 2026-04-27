@@ -2069,3 +2069,319 @@ select.dash-player-select option,
   cursor: pointer;
   margin-left: auto;
 }
+
+/* =========================
+   PLAYERS PAGE
+========================= */
+
+#players {
+  padding-top: 10px;
+}
+
+#playersContainer {
+  padding: 0 16px 20px;
+}
+
+.players-card {
+  background: rgba(20,20,20,0.9);
+  padding: 20px;
+  border-radius: 16px;
+  margin-bottom: 16px;
+}
+
+.players-table {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.players-header {
+  display: grid;
+  grid-template-columns: 40px 1fr 100px 100px 140px;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(54,162,235,0.1);
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 12px;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.players-row {
+  display: grid;
+  grid-template-columns: 40px 1fr 100px 100px 140px;
+  gap: 12px;
+  padding: 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  align-items: center;
+  transition: all 0.2s ease;
+  cursor: grab;
+  user-select: none;
+}
+
+.players-row:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(79,195,255,0.3);
+}
+
+.players-row.dragging {
+  opacity: 0.5;
+  background: rgba(79,195,255,0.1);
+  cursor: grabbing;
+}
+
+.players-order-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #666;
+  cursor: grab;
+  transition: color 0.2s ease;
+}
+
+.players-row:hover .players-order-handle {
+  color: #aaa;
+}
+
+.players-row.dragging .players-order-handle {
+  color: #36a2eb;
+}
+
+.players-name {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: #fff;
+  font-size: 14px;
+}
+
+.players-rating {
+  text-align: center;
+  font-weight: 700;
+  color: #36a2eb;
+  font-size: 16px;
+}
+
+.players-games {
+  text-align: center;
+  color: #aaa;
+  font-size: 14px;
+}
+
+.players-phone-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.players-phone-number {
+  color: #bbb;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: 'Courier New', monospace;
+}
+
+.phone-add-btn {
+  background: rgba(54,162,235,0.2);
+  border: 1px solid rgba(54,162,235,0.5);
+  color: #36a2eb;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.phone-add-btn:hover {
+  background: rgba(54,162,235,0.35);
+  border-color: rgba(54,162,235,0.8);
+}
+
+.phone-edit-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
+  cursor: pointer;
+  color: #999;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.phone-edit-icon:hover {
+  background: rgba(54,162,235,0.3);
+  color: #36a2eb;
+}
+
+/* Phone Edit Modal */
+.phone-edit-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: flex-end;
+  z-index: 1000;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.phone-edit-content {
+  width: 100%;
+  background: rgba(20,20,20,0.95);
+  border-radius: 24px 24px 0 0;
+  padding: 24px;
+  border: 1px solid rgba(79,195,255,0.2);
+}
+
+.phone-edit-header {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 16px;
+}
+
+.phone-edit-input {
+  width: 100%;
+  padding: 12px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(79,195,255,0.3);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 16px;
+  margin-bottom: 12px;
+  font-family: 'Courier New', monospace;
+}
+
+.phone-edit-input:focus {
+  outline: none;
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(79,195,255,0.6);
+  box-shadow: 0 0 10px rgba(79,195,255,0.2);
+}
+
+.phone-edit-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.phone-edit-btn {
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.phone-edit-btn.save {
+  background: linear-gradient(135deg, #36a2eb, #4fc3ff);
+  color: #000;
+}
+
+.phone-edit-btn.save:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(54,162,235,0.4);
+}
+
+.phone-edit-btn.cancel {
+  background: rgba(255,255,255,0.1);
+  color: #bbb;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+.phone-edit-btn.cancel:hover {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+}
+
+/* Access Restriction Card for Players Page */
+.players-access-card {
+  background: rgba(20,20,20,0.9);
+  border: 2px solid rgba(79,195,255,0.2);
+  border-radius: 16px;
+  padding: 40px 24px;
+  text-align: center;
+  margin-top: 40px;
+}
+
+.players-access-card h3 {
+  color: #36a2eb;
+  font-size: 20px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.players-access-card p {
+  color: #aaa;
+  font-size: 14px;
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+.players-access-input {
+  width: 100%;
+  max-width: 300px;
+  padding: 12px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(79,195,255,0.3);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 16px;
+  margin-bottom: 12px;
+  font-family: 'Courier New', monospace;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.players-access-btn {
+  background: linear-gradient(135deg, #36a2eb, #4fc3ff);
+  color: #000;
+  border: none;
+  padding: 12px 30px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-block;
+  margin-top: 12px;
+}
+
+.players-access-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(54,162,235,0.4);
+}
+
+/* No Players State */
+.players-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+}
+
+.players-empty h2 {
+  color: #888;
+  font-size: 18px;
+}
