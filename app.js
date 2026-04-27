@@ -1647,7 +1647,7 @@ data = Array.from({ length: 5 }, (_, i) => {
                       <img src="/unlock.png" class="sms-btn"
                         onclick="unlockPlayer(this, '${row.date}', ${col+1})">
                     ` : `
-                      <img src="imessage.png" class="sms-btn"
+                      <img src="/imessage.png" class="sms-btn"
                         onclick="sendSMS(this, '${row.date}', ${col+1})">
                     `}
 
@@ -1933,7 +1933,7 @@ function unlockPlayer(btn, date, col) {
   input.value = "";
   input.style.border = "";
 
-  btn.src = "imessage.png";
+  btn.src = "/imessage.png";
 
   const check = slot.querySelector(".check-btn");
   check.src = "/white.png";
@@ -1964,14 +1964,6 @@ let currentPage = 0;
 function renderLeaderboard(data) {
   if (!data || !Array.isArray(data)) return;
 
-  // Pre-calculate Power Rating for all players
-  const biteStrengths = {};
-  data.forEach(p => {
-    const name = String(p.name || "").toLowerCase();
-    if (!biteStrengths[name]) {
-      biteStrengths[name] = p.biteStrength ? Number(p.biteStrength) : BITE_STRENGTH_BASE;
-    }
-  });
 
   const container = document.getElementById("leaderboard");
   if (!container) return;
@@ -1983,7 +1975,6 @@ function renderLeaderboard(data) {
         <span>Player</span>
         <span>Win %</span>
         <span>Points Avg.</span>
-        <span>Power Rating</span>
       </div>
 
       ${data.map((p, i) => `
@@ -1992,7 +1983,6 @@ function renderLeaderboard(data) {
           <span>${capitalize(p.name)}</span>
           <span>${formatWinPctDisplay(p.winPct)}</span>
           <span>${(Number.isFinite(Number(p.pointsAvg)) ? Number(p.pointsAvg) : 0).toFixed(2)}</span>
-          <span>${(biteStrengths[String(p.name || "").toLowerCase()] || BITE_STRENGTH_BASE).toFixed(2)}</span>
         </div>
       `).join("")}
     </div>
