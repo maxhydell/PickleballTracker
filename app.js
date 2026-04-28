@@ -720,7 +720,10 @@ async function loadPlayers() {
     try {
       const { data: supabasePlayerData, error } = await window.supabaseClient
         .from('players')
-        .select('id, name, DUPR, PWRank, phone, order_index');
+        .select('*');
+
+
+        console.log("SUPABASE PLAYERS:", supabasePlayerData);
 
       if (!error && supabasePlayerData) {
         // Merge Supabase data into playersCache
@@ -1013,10 +1016,10 @@ async function addPredictedScorePlaceholders(setsData) {
     const aInput = document.querySelector(`.match-card[data-set="${setNum}"][data-game="${gameIdx}"] input:first-of-type`);
     const bInput = document.querySelector(`.match-card[data-set="${setNum}"][data-game="${gameIdx}"] input:last-of-type`);
     
-    if (aInput && !aInput.value) {
-      aInput.placeholder = String(predicted.teamA);
-    }
-    if (bInput && !bInput.value) {
+if (aInput && aInput.value === "") {
+  aInput.placeholder = String(predicted.teamA);
+}
+    if (bInput && bInput.value === "") {
       bInput.placeholder = String(predicted.teamB);
     }
   });
@@ -1122,17 +1125,30 @@ async function calculateSetRatings(setData, playersList) {
   const teamB = (setData.teamB || "").split("/").map(p => p.trim().toLowerCase()).filter(Boolean);
   
   // Get current power rankings for each player
-  const getPlayerPWRank = (name) => {
-    const player = playersList.find(p => p.name.toLowerCase() === name);
-    return Number(player?.PWRank || 50);
-  };
+const getPlayerPWRank = (name) => {
+  const player = playersList.find(p => p.name.toLowerCase() === name);
+  return player?.PWRank ?? null; // 🚨 no fake 50
+};
 
-  // Calculate team average power rankings
-  const teamAAvg = teamA.length ? teamA.reduce((sum, p) => sum + getPlayerPWRank(p), 0) / teamA.length : 50;
-  const teamBAvg = teamB.length ? teamB.reduce((sum, p) => sum + getPlayerPWRank(p), 0) / teamB.length : 50;
+// Build arrays of valid ratings ONLY
+const teamAPowers = teamA.map(getPlayerPWRank).filter(v => v !== null);
+const teamBPowers = teamB.map(getPlayerPWRank).filter(v => v !== null);
 
+// Compute averages ONLY from real values
+const teamAAvg = teamAPowers.length
+  ? teamAPowers.reduce((a, b) => a + b, 0) / teamAPowers.length
+  : null;
+
+const teamBAvg = teamBPowers.length
+  ? teamBPowers.reduce((a, b) => a + b, 0) / teamBPowers.length
+  : null;
   const validScores = (setData.scores || []).filter(score => score && score.includes("-"));
   if (!validScores.length || !teamA.length || !teamB.length) return [];
+
+  if (teamAAvg === null || teamBAvg === null) {
+  console.warn("Missing PWRank data, skipping rating calc for this set");
+  return [];
+}
 
   const ratingChanges = [];
   let totalTeamAWins = 0;
@@ -1234,14 +1250,16 @@ async function getSavedSetData(setNumber) {
 async function persistRatingHistorySnapshot(players, eventId, setNumber) {
   if (!window.supabaseClient || !Array.isArray(players) || !players.length) return;
 
-  const rows = players.map(player => ({
-    player_name: player.name,
-    rating_before: Number(player.DUPR || 0),
-    rating_after: Number(player.PWRank || 0),
-    event_name: `${eventId}:set:${setNumber}`,
-    delta: 0,
-    matches_played: 1
-  }));
+  const rows = players.map(update => ({
+  player_name: update.name,
+  rating_A_before: Number(update.originalDupr || 0),
+  rating_A_after: Number(update.nextDupr || 0),
+  rating_B_before: Number(update.originalPWRank || 0),
+  rating_B_after: Number(update.nextPWRank || 0),
+  event_name: `${eventId}:set:${setNumber}`,
+  delta: Number((update.nextPWRank - update.originalPWRank).toFixed(3)),
+  matches_played: 1
+}));
 
   try {
     const { error } = await window.supabaseClient
@@ -1407,7 +1425,7 @@ async function processSavedSetRatings(setNumber) {
         id: playerRecord.id || null,
         name: playerRecord.name,
         originalDupr: Number(playerRecord.DUPR || 0),
-        originalPWRank: Number(playerRecord.PWRank || 50),
+        originalPWRank: Number(playerRecord.PWRank ?? 50),
         nextDupr: Number((Number(playerRecord.DUPR || 0) + Number(change.delta_A || 0)).toFixed(3)),
         nextPWRank: Number((Number(playerRecord.PWRank || 50) + Number(change.delta_B || 0)).toFixed(3))
       });
@@ -1459,41 +1477,34 @@ async function processSavedSetRatings(setNumber) {
       }
     });
 
-    await persistRatingHistorySnapshot(
-      playerUpdates.map(update => {
-        const playerRecord = playersCache.find(player =>
-          String(player.name || "").toLowerCase() === String(update.name || "").toLowerCase()
-        );
-        return {
-          name: playerRecord?.name || update.name,
-          DUPR: playerRecord?.DUPR || 0,
-          PWRank: playerRecord?.PWRank || 0
-        };
-      }),
-      eventId,
-      setNumber
-    );
+await persistRatingHistorySnapshot(
+  playerUpdates,
+  eventId,
+  setNumber
+);
 
-    clearMemoryCache();
-    await loadPlayers();
-  } catch (err) {
-    console.error("❌ Failed to process saved set ratings:", err);
-  }
+clearMemoryCache();
+await loadPlayers();
+} catch (err) {
+  console.error("❌ Failed to process saved set ratings:", err);
 }
-
+}
 function calculatePredictedScore(teamAAvg, teamBAvg, baseWinPts = 11) {
-  // Calculate predicted score based on power ranking differential
-  // Returns object like { teamA: 11, teamB: 8 }
-  
   const diff = Math.abs(teamAAvg - teamBAvg);
   const strongerIsA = teamAAvg > teamBAvg;
-  
-  // Range: if diff is 0, predict close match (e.g., 11-9)
-  // if diff is 20+, predict blowout (e.g., 11-3)
-  
-  let strongScore = baseWinPts;
-  let weakScore = Math.max(3, Math.min(baseWinPts - 1, Math.round(baseWinPts - (diff / 5))));
-  
+
+  // Normalize diff into 0–1 range (assumes ~40 max meaningful gap)
+  const strengthFactor = Math.min(1, diff / 40);
+
+  // Strong team always gets winning score
+  const strongScore = baseWinPts;
+
+  // Weak team score scales NON-LINEAR (more realistic)
+  let weakScore = Math.round(baseWinPts * (1 - strengthFactor));
+
+  // Clamp to realistic bounds
+  weakScore = Math.max(3, Math.min(baseWinPts - 1, weakScore));
+
   return {
     teamA: strongerIsA ? strongScore : weakScore,
     teamB: strongerIsA ? weakScore : strongScore
@@ -1512,12 +1523,24 @@ async function getPredictedScoresForDay(setsData) {
     
     const getPlayerPWRank = (name) => {
       const player = playersCache.find(p => p.name.toLowerCase() === name);
-      return Number(player?.PWRank || 50);
+      return player?.PWRank ?? null;
     };
     
-    const teamAAvg = teamA.length ? teamA.reduce((sum, p) => sum + getPlayerPWRank(p), 0) / teamA.length : 50;
-    const teamBAvg = teamB.length ? teamB.reduce((sum, p) => sum + getPlayerPWRank(p), 0) / teamB.length : 50;
-    
+const teamAPowers = teamA.map(getPlayerPWRank).filter(v => v !== null);
+const teamBPowers = teamB.map(getPlayerPWRank).filter(v => v !== null);
+
+const teamAAvg = teamAPowers.length
+  ? teamAPowers.reduce((a, b) => a + b, 0) / teamAPowers.length
+  : null;
+
+const teamBAvg = teamBPowers.length
+  ? teamBPowers.reduce((a, b) => a + b, 0) / teamBPowers.length
+  : null;
+
+if (teamAAvg === null || teamBAvg === null) {
+  return; // skip prediction if missing data
+}
+
     const scores = getSetScores(set);
     scores.forEach((score, idx) => {
       const key = `${set.set}-${idx}`;
