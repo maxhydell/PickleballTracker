@@ -1431,6 +1431,7 @@ async function rollbackPlayerRatingBatch(playerUpdates) {
 
   const payload = playerUpdates.map(update => ({
     id: update.id,
+    name: update.name, // ✅ ADD THIS HERE TOO
     DUPR: update.originalDupr,
     PWRank: update.originalPWRank
   }));
